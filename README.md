@@ -173,8 +173,34 @@ bin/                    openpip-post, openpip-hook
 
 ## Roadmap
 
+### Windows and Linux
+
+A cross-platform version is planned in Rust: one shared core plus small native parts for Windows, Linux
+X11 and Linux Wayland. The event protocol stays the same, so hooks and clients work everywhere. Nothing is
+built yet. The full plan, with the decisions already made, is in
+[docs/crossplatform-spec.md](docs/crossplatform-spec.md).
+
+| Milestone | What | Status |
+|---|---|---|
+| M0 | Spikes: prove or drop the risky parts (Windows capture exclusion and border, Wayland portal, GNOME overlay) | Planned |
+| M1 | `openpip-core`: port the core logic to Rust, sharing test data with the Swift tests | Planned |
+| M2 | App model and card renderer, with snapshot tests | Planned |
+| M3 | Windows app (Windows 11; Windows 10 2004+ best effort) | Planned |
+| M4 | Linux X11 app | Planned |
+| M5 | Linux Wayland app (portal window picker; reduced mode on GNOME) | Planned |
+| M6 | Session cards on Windows and Linux | Planned |
+| M7 | Packaging and CI: winget, Scoop, AppImage, `.deb`; Windows signing through SignPath | Planned |
+| M8 | Optional: Wayland capture without the dialog on sway-like compositors | Planned |
+
+What works where: Windows gets everything. Linux X11 gets nearly everything, but cannot hide the panel from
+screenshots. Wayland users pick windows in a system dialog, and GNOME has no true always-on-top.
+
+### macOS
+
 Cursor for Claude in Chrome (its points are page-relative), hook installer, MCP wrapper for OCU, OCU cursor-file reader, live (not frozen)
 back cards, opt-in "follow frontmost window", Accessibility click-to-raise, optional caption log.
+
+Ideas and help are welcome: open an issue.
 
 ## Contributing
 
