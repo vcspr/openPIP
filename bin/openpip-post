@@ -1,0 +1,28 @@
+#!/bin/sh
+# Post one caption line to OpenPiP.
+#
+#   openpip-post <start|step|end|error> "<text>" ["<app>"] ["<window title part>"]
+#
+# Env: OPENPIP_AGENT (agent name, default "cli"), OPENPIP_SOCK (socket path).
+# Always exits 0, so a hook that calls it can never break an agent.
+
+SOCK="${OPENPIP_SOCK:-$HOME/.openpip/openpip.sock}"
+AGENT="${OPENPIP_AGENT:-cli}"
+
+case "$1" in
+    start|step|end|error) ;;
+    *) echo "usage: openpip-post <start|step|end|error> \"<text>\" [\"<app>\"] [\"<window>\"]" >&2; exit 0 ;;
+esac
+
+[ -S "$SOCK" ] || exit 0
+
+# JSON string escape: tabs/newlines -> spaces, drop other control bytes, escape \ and ".
+esc() { printf '%s' "$1" | tr '\011\012\015' '   ' | tr -d '\000-\037' | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+
+json="{\"v\":1,\"agent\":\"$(esc "$AGENT")\",\"status\":\"$1\",\"text\":\"$(esc "$2")\""
+[ -n "$3" ] && json="$json,\"app\":\"$(esc "$3")\""
+[ -n "$4" ] && json="$json,\"window\":\"$(esc "$4")\""
+json="$json}"
+
+printf '%s\n' "$json" | nc -U -w 1 "$SOCK" >/dev/null 2>&1
+exit 0

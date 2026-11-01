@@ -1,0 +1,32 @@
+#!/bin/sh
+# Claude Code hook -> OpenPiP caption. Reads the hook JSON on stdin.
+#
+#   PreToolUse (matcher mcp__open-computer-use__.*|mcp__claude-in-chrome__.*) -> step "<tool> · <app>"
+#   Stop                                                                     -> end "Done"
+#
+# Not installed into settings.json automatically. See README "Claude Code hook".
+# Always exits 0 and prints nothing, so it never blocks or changes a tool call.
+
+POST="$(dirname "$0")/openpip-post"
+input="$(cat)"
+field() { printf '%s' "$input" | plutil -extract "$1" raw -o - - 2>/dev/null; }
+
+event="$(field hook_event_name)"
+tool="$(field tool_name)"
+
+case "$tool" in
+    mcp__open-computer-use__*) agent=ocu; app="$(field tool_input.app)" ;;
+    mcp__claude-in-chrome__*) agent=claude-in-chrome; app="Google Chrome" ;;
+    *) agent=claude; app="" ;;
+esac
+short="${tool##*__}"
+
+case "$event" in
+    PreToolUse)
+        text="$short"
+        [ -n "$app" ] && text="$short · $app"
+        OPENPIP_AGENT="$agent" "$POST" step "$text" "$app" ;;
+    Stop|SubagentStop)
+        OPENPIP_AGENT=claude "$POST" end "Done" ;;
+esac
+exit 0
