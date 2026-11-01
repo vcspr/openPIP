@@ -37,6 +37,8 @@ mkdir -p "$STAGE/bin"
 ditto build/OpenPiP.app "$STAGE/OpenPiP.app"
 install -m 755 bin/openpip-post bin/openpip-hook "$STAGE/bin/"
 ditto -c -k --sequesterRsrc "$STAGE" "$ZIP"
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$PWD/$STAGE/OpenPiP.app" 2>/dev/null || true
+rm -rf "$STAGE"
 SHA="$(shasum -a 256 "$ZIP" | cut -d' ' -f1)"
 echo "Zipped $ZIP ($(du -h "$ZIP" | cut -f1)), sha256 $SHA"
 

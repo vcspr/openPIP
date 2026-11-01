@@ -11,6 +11,13 @@ final class WindowPicker {
     /// Fetches all normal windows, including ones that are minimized or on other Spaces.
     @discardableResult
     func refresh() async -> [WindowInfo] {
+        // Without permission every ScreenCaptureKit call can pop the system prompt again. Ask once, from
+        // the welcome window, instead of on every refresh.
+        guard Permissions.hasScreenRecording else {
+            windows = []
+            lastError = PermissionMissing()
+            return []
+        }
         do {
             let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: false)
             let me = ProcessInfo.processInfo.processIdentifier
@@ -25,6 +32,8 @@ final class WindowPicker {
         }
         return infos
     }
+
+    struct PermissionMissing: Error {}
 
     var infos: [WindowInfo] { windows.map(Self.info) }
 

@@ -4,6 +4,18 @@ import CoreGraphics
 enum Permissions {
     static var hasScreenRecording: Bool { CGPreflightScreenCaptureAccess() }
 
+    /// Clears this app's Screen Recording entry so macOS asks again for the copy that is running now.
+    /// Needed when the entry was saved for an older build: the switch shows "on" but this build is not allowed.
+    /// Only touches this app's own entry.
+    static func resetScreenRecording() {
+        guard let id = Bundle.main.bundleIdentifier else { return }
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+        task.arguments = ["reset", "ScreenCapture", id]
+        try? task.run()
+        task.waitUntilExit()
+    }
+
     static func openScreenRecordingSettings() {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
             NSWorkspace.shared.open(url)
@@ -19,7 +31,7 @@ final class WelcomeWindowController: NSWindowController {
     var onGranted: (() -> Void)?
 
     init() {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 170),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 460, height: 230),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "OpenPiP"
         window.isReleasedWhenClosed = false
@@ -33,8 +45,14 @@ final class WelcomeWindowController: NSWindowController {
         button.bezelStyle = .rounded
         button.keyEquivalent = "\r"
         status.font = .systemFont(ofSize: 12, weight: .medium)
+        let hint = NSTextField(wrappingLabelWithString:
+            "Already on in System Settings but macOS keeps asking? The switch belongs to an older copy of OpenPiP. Click Fix Permission, then allow it once more.")
+        hint.font = .systemFont(ofSize: 11)
+        hint.textColor = .secondaryLabelColor
+        let fix = NSButton(title: "Fix Permission", target: self, action: #selector(fixPermission))
+        fix.bezelStyle = .rounded
 
-        let stack = NSStackView(views: [line1, line2, button, status])
+        let stack = NSStackView(views: [line1, line2, button, status, hint, fix])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
@@ -60,6 +78,12 @@ final class WelcomeWindowController: NSWindowController {
         if !CGRequestScreenCaptureAccess() {
             Permissions.openScreenRecordingSettings()
         }
+    }
+
+    @objc private func fixPermission() {
+        Permissions.resetScreenRecording()
+        _ = CGRequestScreenCaptureAccess()
+        Permissions.openScreenRecordingSettings()
     }
 
     private func update() {

@@ -20,6 +20,10 @@ cp "$BIN" "$APP/Contents/MacOS/OpenPiP"
 cp Support/Info.plist "$APP/Contents/Info.plist"
 codesign --force --sign - --identifier app.hemii.openpip "$APP"
 codesign --verify --strict "$APP"
+# Keep this build copy off macOS's app list. Two registered copies with one bundle id can tie the
+# Screen Recording switch to the wrong copy, and then macOS keeps asking.
+LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+"$LSREGISTER" -u "$PWD/$APP" 2>/dev/null || true
 echo "Built $APP ($(du -sh "$APP" | cut -f1))"
 
 if [[ "${1:-}" == "--install" ]]; then
