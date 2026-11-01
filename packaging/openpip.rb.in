@@ -8,7 +8,7 @@ cask "openpip" do
   homepage "https://github.com/vcspr/openPIP"
 
   depends_on arch: :arm64
-  depends_on macos: ">= :sonoma"
+  depends_on macos: :sonoma
 
   app "OpenPiP.app"
   binary "#{appdir}/OpenPiP.app/Contents/Resources/bin/openpip-post"

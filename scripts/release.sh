@@ -56,6 +56,7 @@ EOF
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 gh repo clone "$TAP" "$TMP/tap" -- -q
+mkdir -p "$TMP/tap/Casks"
 sed -e "s/@VERSION@/$VERSION/" -e "s/@SHA256@/$SHA/" packaging/openpip.rb.in > "$TMP/tap/Casks/openpip.rb"
 git -C "$TMP/tap" add Casks/openpip.rb
 if git -C "$TMP/tap" diff --cached --quiet; then
