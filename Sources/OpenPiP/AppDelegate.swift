@@ -14,6 +14,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         var hidden: Bool
     }
 
+    /// An agent session shown as a drawn card: tasks, last step, terminal.
+    private final class TrackedSession {
+        let url: URL
+        var label: String
+        let watcher: SessionWatcher
+        var state = SessionState()
+        var image: CGImage?
+
+        init(url: URL, label: String) {
+            self.url = url
+            self.label = label
+            watcher = SessionWatcher(url: url)
+        }
+    }
+
     private let panel = PanelController()
     private let capture = CaptureSession()
     private let picker = WindowPicker()
@@ -32,11 +47,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var pauseItem: NSMenuItem!
     private var clearItem: NSMenuItem!
     private var cursorItem: NSMenuItem!
+    private let agentsMenu = NSMenu()
+    private var autoTrackItem: NSMenuItem!
 
     private var autoHide = AutoHide()
     private let denyList = DenyList(extra: Settings.extraDenyList)
     private var stack = CardStack(limit: Settings.maxCards)
     private var cards: [UInt32: Card] = [:]
+    private var sessions: [UInt32: TrackedSession] = [:]
+    /// Session cards get ids far above any window id, so the two kinds never collide.
+    private var nextSessionID: UInt32 = 0xF000_0000
+    private let scanner = AgentScanner()
+    private var activeAgents: [AgentSession] = []
+    private var lastAgentScan = Date.distantPast
+    private var lastSessionRedraw = Date.distantPast
     /// Latest caption, shown as a pill only while there is no window to mirror.
     private var caption: String?
     /// True while the front window should be streaming. Cleared when the stream fails, so we do not retry in a loop.
@@ -150,7 +174,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Puts `window` at the front of the stack and streams it. The old front card keeps its last frame.
     private func mirror(_ window: WindowInfo) {
         let switching = window.id != stack.front
-        for id in stack.push(window.id) { cards[id] = nil }
+        forget(stack.push(window.id))
 
         let hidden = denyList.isDenied(bundleID: window.bundleID)
         var card = cards[window.id] ?? Card(info: window, surface: nil,
@@ -179,6 +203,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func bringToFront(_ id: UInt32) {
+        if sessions[id] != nil {
+            showSession(id)
+            autoHide.pinned = true
+            return
+        }
         // Clicking a card is a manual pick: it wins over auto-follow until "Follow Agent" is back on.
         Settings.followAgent = false
         autoHide.pinned = true
@@ -218,8 +247,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         let models = stack.ids.compactMap { id -> CardModel? in
+            if let t = sessions[id] {
+                return CardModel(id: id, content: t.image, aspect: SessionCardRenderer.aspect, note: nil)
+            }
             guard let c = cards[id] else { return nil }
-            return CardModel(id: id, surface: c.hidden ? nil : c.surface, aspect: c.aspect, note: c.note)
+            return CardModel(id: id, content: c.hidden ? nil : c.surface, aspect: c.aspect, note: c.note)
         }
         panel.setCards(models)
         panel.setPlaceholder(models.isEmpty ? (caption ?? "Waiting for an agent") : nil)
@@ -227,7 +259,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func startCaptureIfNeeded() {
         guard wantsCapture, !paused, autoHide.isVisible(at: Date()),
-              capture.state == .idle, let id = stack.front else { return }
+              capture.state == .idle, let id = stack.front, cards[id] != nil else { return }
         guard let scWindow = picker.scWindow(id: id) else {
             drop(id)
             return
@@ -248,6 +280,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Runs twice a second: show or hide the panel, pause capture while hidden, notice closed windows.
     private func tick() {
         let now = Date()
+        autoTrackIfNeeded(now: now)
         let visible = autoHide.isVisible(at: now)
         panel.setVisible(visible)
 
@@ -256,8 +289,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         startCaptureIfNeeded()
+        if now.timeIntervalSince(lastSessionRedraw) > 5 {
+            lastSessionRedraw = now
+            sessions.keys.forEach(redraw)
+        }
 
-        if stack.front != nil, now.timeIntervalSince(lastWindowCheck) > 2 {
+        if front != nil, now.timeIntervalSince(lastWindowCheck) > 2 {
             lastWindowCheck = now
             Task { await checkStillThere() }
         }
@@ -268,7 +305,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let list = await picker.refresh()
         guard picker.lastError == nil else { return }
         let alive = Set(list.map(\.id))
-        for id in stack.ids where !alive.contains(id) { drop(id) }
+        for id in stack.ids where cards[id] != nil && !alive.contains(id) { drop(id) }
 
         guard let id = stack.front, let now = list.first(where: { $0.id == id }),
               var card = cards[id], !card.hidden else { return }
@@ -282,6 +319,131 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         cards[id] = card
         render()
         startCaptureIfNeeded()
+    }
+
+    // MARK: agent sessions
+
+    /// Starts showing an agent session as a card at the front of the stack.
+    private func track(_ agent: AgentSession) {
+        if let id = sessions.first(where: { $0.value.url == agent.url })?.key {
+            showSession(id)
+            return
+        }
+        let id = nextSessionID
+        nextSessionID &+= 1
+        let t = TrackedSession(url: agent.url, label: agent.label)
+        t.state = SessionState()
+        sessions[id] = t
+        t.watcher.onChange = { [weak self] state in
+            guard let self, let t = self.sessions[id] else { return }
+            t.state = state
+            self.redraw(id)
+            self.sessionChanged(id)
+        }
+        redraw(id)
+        t.watcher.start()
+        showSession(id)
+    }
+
+    private func untrack(_ id: UInt32) {
+        stack.remove(id)
+        forget([id])
+        if let next = front, !next.hidden { wantsCapture = true }
+        render()
+        tick()
+    }
+
+    private func showSession(_ id: UInt32) {
+        let wasFront = stack.front
+        forget(stack.push(id))
+        if wasFront != id, capture.state != .idle { Task { await capture.stop() } }
+        wantsCapture = false
+        render()
+        tick()
+    }
+
+    /// A tracked agent did something: show the panel, and bring its card forward when the front
+    /// card is a quiet session (window cards driven by events stay where they are).
+    private func sessionChanged(_ id: UInt32) {
+        guard let t = sessions[id], let when = t.state.lastTimestamp, Date().timeIntervalSince(when) < 30 else { return }
+        autoHide.event(.step, at: Date())
+        guard Settings.followAgent, stack.front != id else { tick(); return }
+        let frontIsQuietSession = stack.front.flatMap { sessions[$0] }.map {
+            Date().timeIntervalSince($0.state.lastTimestamp ?? .distantPast) > 15
+        } ?? (stack.front == nil)
+        if frontIsQuietSession { showSession(id) } else { tick() }
+    }
+
+    private func redraw(_ id: UInt32) {
+        guard let t = sessions[id],
+              let image = SessionCardRenderer.render(t.state, label: t.label, now: Date()) else { return }
+        t.image = image
+        panel.setImage(image, for: id)
+    }
+
+    /// Lets go of cards that left the stack: window cards are forgotten, session watchers stop.
+    private func forget(_ ids: [UInt32]) {
+        for id in ids {
+            cards[id] = nil
+            sessions.removeValue(forKey: id)?.watcher.stop()
+        }
+    }
+
+    /// Looks for new agent sessions every 10 seconds while auto-track is on.
+    private func autoTrackIfNeeded(now: Date) {
+        guard Settings.autoTrackAgents, now.timeIntervalSince(lastAgentScan) > 10 else { return }
+        lastAgentScan = now
+        Task {
+            let fresh = await scanner.active(within: 60)
+            activeAgents = fresh
+            for agent in fresh where !sessions.values.contains(where: { $0.url == agent.url }) {
+                track(agent)
+            }
+        }
+    }
+
+    private func fillAgentsMenu() {
+        agentsMenu.removeAllItems()
+        let now = Date()
+        if activeAgents.isEmpty {
+            let none = NSMenuItem(title: "No agent worked in the last 15 minutes", action: nil, keyEquivalent: "")
+            none.isEnabled = false
+            agentsMenu.addItem(none)
+        }
+        for agent in activeAgents {
+            let minutes = Int(now.timeIntervalSince(agent.modified) / 60)
+            let age = minutes < 1 ? "now" : "\(minutes)m ago"
+            let item = NSMenuItem(title: "\(String(agent.displayName.prefix(70)))  ·  \(age)",
+                                  action: #selector(toggleAgent(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = agent.url
+            item.state = sessions.values.contains { $0.url == agent.url } ? .on : .off
+            agentsMenu.addItem(item)
+        }
+        agentsMenu.addItem(.separator())
+        autoTrackItem = NSMenuItem(title: "Auto-Track Active Agents", action: #selector(toggleAutoTrack), keyEquivalent: "")
+        autoTrackItem.target = self
+        autoTrackItem.state = Settings.autoTrackAgents ? .on : .off
+        agentsMenu.addItem(autoTrackItem)
+        let note = NSMenuItem(title: "Reads Claude Code and OpenBot session logs on this Mac only", action: nil, keyEquivalent: "")
+        note.isEnabled = false
+        agentsMenu.addItem(note)
+    }
+
+    @objc private func toggleAgent(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        if let id = sessions.first(where: { $0.value.url == url })?.key {
+            untrack(id)
+        } else if let agent = activeAgents.first(where: { $0.url == url }) {
+            autoHide.pinned = true
+            track(agent)
+        }
+    }
+
+    @objc private func toggleAutoTrack() {
+        Settings.autoTrackAgents.toggle()
+        lastAgentScan = .distantPast
+        tick()
     }
 
     // MARK: menu
@@ -304,6 +466,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         followItem = item("Follow Agent", #selector(toggleFollow))
         cursorItem = item("Show Agent Cursor", #selector(toggleCursor))
         clearItem = item("Clear Windows", #selector(clearWindows))
+        let agentsItem = NSMenuItem(title: "Agents", action: nil, keyEquivalent: "")
+        agentsItem.submenu = agentsMenu
+        agentsMenu.delegate = self
+        mainMenu.addItem(agentsItem)
         let sizeItem = NSMenuItem(title: "Windows in Stack", action: nil, keyEquivalent: "")
         for n in 1...4 {
             let i = NSMenuItem(title: "\(n)", action: #selector(setStackSize(_:)), keyEquivalent: "")
@@ -357,6 +523,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 await picker.refresh()
                 picker.fill(windowMenu, target: self, action: #selector(pickWindow(_:)), current: stack.front)
             }
+        } else if menu === agentsMenu {
+            fillAgentsMenu()
+            Task {
+                activeAgents = await scanner.active()
+                fillAgentsMenu()
+            }
         } else if menu === mainMenu {
             followItem.state = Settings.followAgent ? .on : .off
             cursorItem.state = Settings.showCursor ? .on : .off
@@ -392,8 +564,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func clearWindows() {
+        forget(stack.ids)
         stack.removeAll()
-        cards.removeAll()
         wantsCapture = false
         autoHide.pinned = false
         Task { await capture.stop() }
@@ -403,7 +575,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func setStackSize(_ sender: NSMenuItem) {
         Settings.maxCards = sender.tag
-        for id in stack.setLimit(sender.tag) { cards[id] = nil }
+        forget(stack.setLimit(sender.tag))
         render()
     }
 

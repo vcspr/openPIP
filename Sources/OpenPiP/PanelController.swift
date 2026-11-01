@@ -29,7 +29,8 @@ final class FloatingPanel: NSPanel {
 /// What one card shows. Front card first in `PanelController.setCards`.
 struct CardModel {
     var id: UInt32
-    var surface: IOSurfaceRef?
+    /// A live window frame (IOSurfaceRef) or a drawn session card (CGImage).
+    var content: Any?
     var aspect: CGFloat
     /// Small label over the card, e.g. "Window not visible". nil shows none.
     var note: String?
@@ -93,6 +94,11 @@ final class PanelController {
     /// Fast path for a new live frame on one card.
     func setFrame(_ surface: IOSurfaceRef, for id: UInt32) {
         view.setFrame(surface, for: id)
+    }
+
+    /// Replaces a session card's picture.
+    func setImage(_ image: CGImage, for id: UInt32) {
+        view.setImage(image, for: id)
     }
 
     /// Puts the agent cursor on a card. `fraction` is from the window's top-left, 0...1; nil hides it.
@@ -163,7 +169,7 @@ final class PanelView: NSView {
                 layers[card.id] = l
                 return l
             }()
-            if let surface = card.surface { l.setContent(surface) }
+            if let content = card.content { l.setContent(content) }
             l.setNote(card.note)
             l.zPosition = CGFloat(-index)
             l.setBack(depth: index, blurRadius: Self.blurRadius)
@@ -180,6 +186,12 @@ final class PanelView: NSView {
             cards[index].aspect = aspect
             relayout(animated: false)
         }
+    }
+
+    func setImage(_ image: CGImage, for id: UInt32) {
+        guard let i = cards.firstIndex(where: { $0.id == id }) else { return }
+        cards[i].content = image
+        layers[id]?.setContent(image)
     }
 
     func setCursor(_ fraction: CGPoint?, for id: UInt32, click: Bool) {
@@ -397,10 +409,10 @@ final class CardLayer: CALayer {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay + 0.55) { ring.removeFromSuperlayer() }
     }
 
-    func setContent(_ surface: IOSurfaceRef) {
+    func setContent(_ value: Any) {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        content.contents = surface
+        content.contents = value
         CATransaction.commit()
     }
 

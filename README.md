@@ -1,7 +1,7 @@
 # OpenPiP
 
-**Picture-in-picture for AI agents on macOS.** See what your computer-use agent is doing, even when it
-works in a window behind yours.
+**Picture-in-picture for AI agents on macOS.** See what your agents are doing: a live mirror of the window
+a computer-use agent is working in, or a live task list and terminal for agents that work headless.
 
 OpenPiP is a small always-on-top stack of window cards. The front card is a live mirror of the window the
 agent is using right now. Older windows stay behind it, shifted up and left, lightly blurred. No bar, no
@@ -46,6 +46,10 @@ swift test                         # unit tests (event parsing, auto-hide, match
 First run shows a window asking for **Screen Recording**. Ad-hoc signing gives every build a new identity,
 so after a rebuild macOS may ask again. Always run the copy in `~/Applications`.
 
+**Switch is on but macOS keeps asking?** The switch belongs to an older build of OpenPiP. Open the menu →
+**Screen Recording…** → **Fix Permission**, allow it once more, then quit and reopen OpenPiP. (It runs
+`tccutil reset ScreenCapture app.hemii.openpip`, which only clears OpenPiP's own entry.)
+
 ## Use
 
 - Menu-bar icon (PiP symbol) → **Mirror Window** to pick a window by hand. A manual pick turns off
@@ -59,6 +63,22 @@ so after a rebuild macOS may ask again. Always run the copy in `~/Applications`.
 - Right-click the panel for the same menu.
 - **Show Agent Cursor** draws the agent's pointer on the live card and a ripple on each click, when
   events carry `x`/`y`.
+
+### Agents with no window
+
+Many agents work headless: they run commands and edit files, with no window to mirror. **Agents** in the
+menu lists every Claude Code session whose log changed in the last 15 minutes. That includes OpenBot
+agents, which run Claude Code (shown by their OpenBot name, read from OpenBot's own CLI). Pick one to add a
+**session card**:
+
+- the session name and a green dot while it is working,
+- its task list and progress (`TaskCreate`/`TaskUpdate`, `TodoWrite`, and the Claude desktop app's plan),
+- the last step it took,
+- a small terminal with its latest shell commands and the end of their output.
+
+Click the item again to stop tracking. **Auto-Track Active Agents** adds sessions on their own as soon as
+they start writing. Session cards read `~/.claude/projects/*/*.jsonl` on this Mac only, show it on your
+screen, and store nothing.
 
 The panel shows when an event arrives. It hides 5 s after an `end`/`error` event, or after 10 s with no
 event and no change in the mirrored window.
@@ -133,9 +153,10 @@ uses "Google Chrome" for Claude in Chrome. open-computer-use clicks with `x`/`y`
 
 ```
 Sources/OpenPiPCore/   pure logic, unit tested: Event, LineBuffer, AutoHide, WindowMatcher, DenyList,
-                        FrameChange, CardStack + CardLayout, CursorMapper
+                        FrameChange, CardStack + CardLayout, CursorMapper, SessionState, SessionLabel
 Sources/OpenPiP/       app: AppDelegate (menu + wiring), PanelController, CaptureSession, WindowPicker,
-                        EventServer, Permissions, HotKey, Settings
+                        EventServer, Permissions, HotKey, Settings, SessionWatcher, AgentScanner,
+                        SessionCardRenderer
 Support/Info.plist      bundle id app.hemii.openpip, LSUIElement
 scripts/build-app.sh    SwiftPM release build -> .app -> codesign -s -
 scripts/release.sh      version bump, zip, GitHub release, Homebrew cask update

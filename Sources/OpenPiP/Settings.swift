@@ -32,6 +32,12 @@ enum Settings {
         set { d.set(newValue, forKey: "showCursor") }
     }
 
+    /// Add agent sessions to the stack on their own when their log starts changing.
+    static var autoTrackAgents: Bool {
+        get { d.bool(forKey: "autoTrackAgents") }
+        set { d.set(newValue, forKey: "autoTrackAgents") }
+    }
+
     /// How many windows the stack keeps (front one live, the rest frozen and blurred).
     static var maxCards: Int {
         get { d.object(forKey: "maxCards") as? Int ?? 3 }
