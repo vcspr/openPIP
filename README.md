@@ -21,7 +21,20 @@ hook), or your own tools.
 - macOS 14 (Sonoma) or newer, Apple silicon.
 - Swift 5.10 or newer (Xcode 15.3+ or the Command Line Tools).
 
-## Build and run
+## Install
+
+```bash
+brew install --cask vcspr/tap/openpip
+open /Applications/OpenPiP.app
+```
+
+This also puts `openpip-post` and `openpip-hook` on your PATH. Or download the zip from
+[Releases](https://github.com/vcspr/openPIP/releases).
+
+The app is ad-hoc signed, not notarized. If macOS blocks the first launch, open System Settings →
+Privacy & Security and click **Open Anyway**. Then allow **Screen Recording** when OpenPiP asks.
+
+## Build from source
 
 ```bash
 git clone https://github.com/vcspr/openPIP.git && cd openPIP
@@ -94,8 +107,9 @@ Cursor env vars: `OPENPIP_X`, `OPENPIP_Y`, `OPENPIP_COORDS`, `OPENPIP_MAXEDGE`.
 
 ## Claude Code hook (not installed automatically)
 
-`~/.openpip/bin/openpip-hook` turns Claude Code hook input into captions. To use it, add this to
-`~/.claude/settings.json` yourself:
+`openpip-hook` turns Claude Code hook input into captions. To use it, add this to
+`~/.claude/settings.json` yourself. With Homebrew the path is `/opt/homebrew/bin/openpip-hook`; from
+source it is `~/.openpip/bin/openpip-hook`.
 
 ```json
 {
@@ -124,6 +138,8 @@ Sources/OpenPiP/       app: AppDelegate (menu + wiring), PanelController, Captur
                         EventServer, Permissions, HotKey, Settings
 Support/Info.plist      bundle id app.hemii.openpip, LSUIElement
 scripts/build-app.sh    SwiftPM release build -> .app -> codesign -s -
+scripts/release.sh      version bump, zip, GitHub release, Homebrew cask update
+packaging/              Homebrew cask template
 bin/                    openpip-post, openpip-hook
 ```
 

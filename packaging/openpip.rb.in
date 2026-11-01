@@ -1,0 +1,30 @@
+cask "openpip" do
+  version "@VERSION@"
+  sha256 "@SHA256@"
+
+  url "https://github.com/vcspr/openPIP/releases/download/v#{version}/OpenPiP-#{version}.zip"
+  name "OpenPiP"
+  desc "Floating live window cards that show what an AI agent is doing"
+  homepage "https://github.com/vcspr/openPIP"
+
+  depends_on arch: :arm64
+  depends_on macos: ">= :sonoma"
+
+  app "OpenPiP.app"
+  binary "#{appdir}/OpenPiP.app/Contents/Resources/bin/openpip-post"
+  binary "#{appdir}/OpenPiP.app/Contents/Resources/bin/openpip-hook"
+
+  uninstall quit: "app.hemii.openpip"
+
+  zap trash: [
+    "~/.openpip",
+    "~/Library/Preferences/app.hemii.openpip.plist",
+  ]
+
+  caveats <<~EOS
+    OpenPiP is ad-hoc signed, not notarized. If macOS blocks the first launch, open
+    System Settings > Privacy & Security and click "Open Anyway".
+
+    OpenPiP needs Screen Recording permission. Grant it when it asks on first launch.
+  EOS
+end
