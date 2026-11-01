@@ -29,8 +29,14 @@ fi
 
 scripts/build-app.sh
 ZIP="build/OpenPiP-$VERSION.zip"
-rm -f "$ZIP"
-ditto -c -k --sequesterRsrc --keepParent build/OpenPiP.app "$ZIP"
+# The shell tools sit next to the app, not inside it: macOS kills anything run from inside a
+# downloaded app it has not approved yet, and the cask links these onto PATH before first launch.
+STAGE=build/stage
+rm -rf "$STAGE" "$ZIP"
+mkdir -p "$STAGE/bin"
+ditto build/OpenPiP.app "$STAGE/OpenPiP.app"
+install -m 755 bin/openpip-post bin/openpip-hook "$STAGE/bin/"
+ditto -c -k --sequesterRsrc "$STAGE" "$ZIP"
 SHA="$(shasum -a 256 "$ZIP" | cut -d' ' -f1)"
 echo "Zipped $ZIP ($(du -h "$ZIP" | cut -f1)), sha256 $SHA"
 

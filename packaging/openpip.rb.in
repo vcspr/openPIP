@@ -11,8 +11,8 @@ cask "openpip" do
   depends_on macos: :sonoma
 
   app "OpenPiP.app"
-  binary "#{appdir}/OpenPiP.app/Contents/Resources/bin/openpip-post"
-  binary "#{appdir}/OpenPiP.app/Contents/Resources/bin/openpip-hook"
+  binary "bin/openpip-post"
+  binary "bin/openpip-hook"
 
   uninstall quit: "app.hemii.openpip"
 

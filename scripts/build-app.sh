@@ -15,11 +15,9 @@ BIN="$(swift build -c release --arch arm64 --show-bin-path)/OpenPiP"
 
 APP=build/OpenPiP.app
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/bin"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/OpenPiP"
 cp Support/Info.plist "$APP/Contents/Info.plist"
-# The shell tools ride inside the app so the Homebrew cask can link them onto PATH.
-install -m 755 bin/openpip-post bin/openpip-hook "$APP/Contents/Resources/bin/"
 codesign --force --sign - --identifier app.hemii.openpip "$APP"
 codesign --verify --strict "$APP"
 echo "Built $APP ($(du -sh "$APP" | cut -f1))"
