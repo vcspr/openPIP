@@ -31,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var clickThroughItem: NSMenuItem!
     private var pauseItem: NSMenuItem!
     private var clearItem: NSMenuItem!
+    private var cursorItem: NSMenuItem!
 
     private var autoHide = AutoHide()
     private let denyList = DenyList(extra: Settings.extraDenyList)
@@ -110,20 +111,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if Settings.followAgent, hasHint, !paused {
             // Skip the window lookup when the event still points at the front window.
             let alreadyThere = front.map { WindowMatcher.isSameWindow(event, $0.info) } ?? false
-            if !(alreadyThere && capture.state != .idle) {
+            if alreadyThere && capture.state != .idle {
+                showCursor(for: event, on: front?.info)
+            } else {
                 Task {
                     let list = await picker.refresh()
                     if let match = WindowMatcher.match(event, in: list) {
                         mirror(match)
+                        showCursor(for: event, on: match)
                     } else if stack.front == nil {
                         caption = "No window found for \(event.app ?? event.window ?? "this agent")"
                         render()
                     }
                 }
             }
+        } else if let front, WindowMatcher.isSameWindow(event, front.info) {
+            showCursor(for: event, on: front.info)
+        }
+        if event.status == .end || event.status == .error, let id = stack.front {
+            panel.setCursor(nil, for: id, click: false)
         }
         render()
         tick()
+    }
+
+    /// Moves the agent cursor on `window`'s card when the event carries a point. Events without a
+    /// point leave the cursor where it was.
+    private func showCursor(for event: Event, on window: WindowInfo?) {
+        guard Settings.showCursor, event.x != nil, event.y != nil,
+              let window, window.id == stack.front, cards[window.id]?.hidden == false else { return }
+        let fraction = CursorMapper.fraction(for: event, windowFrame: window.frame,
+                                             scale: WindowPicker.displayScale(for: window.frame))
+        panel.setCursor(fraction, for: window.id, click: fraction != nil)
     }
 
     // MARK: stack
@@ -283,6 +302,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         mainMenu.addItem(mirrorItem)
 
         followItem = item("Follow Agent", #selector(toggleFollow))
+        cursorItem = item("Show Agent Cursor", #selector(toggleCursor))
         clearItem = item("Clear Windows", #selector(clearWindows))
         let sizeItem = NSMenuItem(title: "Windows in Stack", action: nil, keyEquivalent: "")
         for n in 1...4 {
@@ -339,6 +359,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         } else if menu === mainMenu {
             followItem.state = Settings.followAgent ? .on : .off
+            cursorItem.state = Settings.showCursor ? .on : .off
             alwaysShowItem.state = Settings.alwaysShow ? .on : .off
             clickThroughItem.state = panel.clickThrough ? .on : .off
             pauseItem.state = paused ? .on : .off
@@ -363,6 +384,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Settings.followAgent.toggle()
         if Settings.followAgent { autoHide.pinned = false }
         tick()
+    }
+
+    @objc private func toggleCursor() {
+        Settings.showCursor.toggle()
+        if !Settings.showCursor, let id = stack.front { panel.setCursor(nil, for: id, click: false) }
     }
 
     @objc private func clearWindows() {

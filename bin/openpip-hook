@@ -4,6 +4,9 @@
 #   PreToolUse (matcher mcp__open-computer-use__.*|mcp__claude-in-chrome__.*) -> step "<tool> · <app>"
 #   Stop                                                                     -> end "Done"
 #
+# open-computer-use clicks carry x/y in screenshot pixels, shrunk so the long edge is at most
+# image.maxLongEdgePixels (1280 by default). Those go to the agent cursor.
+#
 # Not installed into settings.json automatically. See README "Claude Code hook".
 # Always exits 0 and prints nothing, so it never blocks or changes a tool call.
 
@@ -15,7 +18,17 @@ event="$(field hook_event_name)"
 tool="$(field tool_name)"
 
 case "$tool" in
-    mcp__open-computer-use__*) agent=ocu; app="$(field tool_input.app)" ;;
+    mcp__open-computer-use__*)
+        agent=ocu
+        app="$(field tool_input.app)"
+        OPENPIP_X="$(field tool_input.x)"
+        OPENPIP_Y="$(field tool_input.y)"
+        OPENPIP_COORDS=pixels
+        cfg="$HOME/.config/ocu/config.json"
+        maxedge="$(plutil -extract image.maxLongEdgePixels raw -o - "$cfg" 2>/dev/null || echo 1280)"
+        shrink="$(plutil -extract image.scaleDownAfterMaxSize raw -o - "$cfg" 2>/dev/null || echo true)"
+        [ "$shrink" = "false" ] || OPENPIP_MAXEDGE="$maxedge"
+        export OPENPIP_X OPENPIP_Y OPENPIP_COORDS OPENPIP_MAXEDGE ;;
     mcp__claude-in-chrome__*) agent=claude-in-chrome; app="Google Chrome" ;;
     *) agent=claude; app="" ;;
 esac

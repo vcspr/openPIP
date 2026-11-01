@@ -95,6 +95,12 @@ final class PanelController {
         view.setFrame(surface, for: id)
     }
 
+    /// Puts the agent cursor on a card. `fraction` is from the window's top-left, 0...1; nil hides it.
+    /// `click` plays a ripple where the cursor lands.
+    func setCursor(_ fraction: CGPoint?, for id: UInt32, click: Bool) {
+        view.setCursor(fraction, for: id, click: click)
+    }
+
     /// A small pill shown when there are no cards, e.g. the agent's caption. nil hides it.
     func setPlaceholder(_ text: String?) {
         view.setPlaceholder(text)
@@ -174,6 +180,11 @@ final class PanelView: NSView {
             cards[index].aspect = aspect
             relayout(animated: false)
         }
+    }
+
+    func setCursor(_ fraction: CGPoint?, for id: UInt32, click: Bool) {
+        for (other, l) in layers where other != id { l.setCursor(nil, click: false) }
+        layers[id]?.setCursor(fraction, click: click)
     }
 
     func setPlaceholder(_ text: String?) {
@@ -292,6 +303,9 @@ final class CardLayer: CALayer {
     private let content = CALayer()
     private let veil = CALayer()
     private let note = PillLayer()
+    private let cursor = CursorLayer()
+    /// Where the cursor sits, from the window's top-left (0...1). nil when hidden.
+    private var cursorFraction: CGPoint?
 
     override init() {
         super.init()
@@ -314,6 +328,9 @@ final class CardLayer: CALayer {
         veil.opacity = 0
         clip.addSublayer(veil)
 
+        cursor.isHidden = true
+        addSublayer(cursor)
+
         note.isHidden = true
         addSublayer(note)
     }
@@ -324,6 +341,60 @@ final class CardLayer: CALayer {
     func setScale(_ scale: CGFloat) {
         contentsScale = scale
         note.setScale(scale)
+        cursor.contentsScale = scale
+    }
+
+    func setCursor(_ fraction: CGPoint?, click: Bool) {
+        guard let fraction else {
+            cursorFraction = nil
+            cursor.isHidden = true
+            return
+        }
+        let wasHidden = cursor.isHidden
+        cursorFraction = fraction
+        let point = cursorPoint(fraction)
+        CATransaction.begin()
+        if wasHidden {
+            // Appear in place; only glide between known spots.
+            CATransaction.setDisableActions(true)
+        } else {
+            CATransaction.setAnimationDuration(0.3)
+            CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeInEaseOut))
+        }
+        cursor.position = point
+        cursor.isHidden = false
+        CATransaction.commit()
+        if click { ripple(at: point, delay: wasHidden ? 0 : 0.3) }
+    }
+
+    private func cursorPoint(_ f: CGPoint) -> CGPoint {
+        CGPoint(x: f.x * bounds.width, y: (1 - f.y) * bounds.height)
+    }
+
+    private func ripple(at point: CGPoint, delay: CFTimeInterval) {
+        let r: CGFloat = 16
+        let ring = CAShapeLayer()
+        ring.path = CGPath(ellipseIn: CGRect(x: -r, y: -r, width: 2 * r, height: 2 * r), transform: nil)
+        ring.fillColor = NSColor.controlAccentColor.withAlphaComponent(0.25).cgColor
+        ring.strokeColor = NSColor.controlAccentColor.cgColor
+        ring.lineWidth = 2
+        ring.position = point
+        ring.opacity = 0
+        insertSublayer(ring, below: cursor)
+
+        let grow = CABasicAnimation(keyPath: "transform.scale")
+        grow.fromValue = 0.2
+        grow.toValue = 1.4
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 0.9
+        fade.toValue = 0
+        let group = CAAnimationGroup()
+        group.animations = [grow, fade]
+        group.duration = 0.5
+        group.beginTime = CACurrentMediaTime() + delay
+        group.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        ring.add(group, forKey: "ripple")
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay + 0.55) { ring.removeFromSuperlayer() }
     }
 
     func setContent(_ surface: IOSurfaceRef) {
@@ -352,6 +423,7 @@ final class CardLayer: CALayer {
             let blur = CIFilter(name: "CIGaussianBlur")
             blur?.setValue(blurRadius * CGFloat(depth), forKey: kCIInputRadiusKey)
             content.filters = [clamp, blur].compactMap { $0 }
+            setCursor(nil, click: false)
             veil.opacity = Float(min(0.45, 0.22 * Double(depth)))
         }
     }
@@ -364,6 +436,7 @@ final class CardLayer: CALayer {
         clip.cornerRadius = cornerRadius
         content.frame = local
         veil.frame = local
+        if let cursorFraction { cursor.position = cursorPoint(cursorFraction) }
         placeNote()
     }
 
@@ -372,6 +445,32 @@ final class CardLayer: CALayer {
         note.frame = CGRect(x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2,
                             width: size.width, height: size.height)
     }
+}
+
+/// The agent's pointer: a white arrow with a dark outline. Its tip is at the layer's position.
+final class CursorLayer: CAShapeLayer {
+    override init() {
+        super.init()
+        let pts: [CGPoint] = [(0, 0), (0, -17), (4, -13), (7, -19.5), (9.6, -18.4), (6.7, -12.2), (12, -12.2)]
+            .map { CGPoint(x: $0.0, y: $0.1) }
+        let path = CGMutablePath()
+        path.addLines(between: pts)
+        path.closeSubpath()
+        self.path = path
+        fillColor = NSColor.white.cgColor
+        strokeColor = NSColor.black.cgColor
+        lineWidth = 1.2
+        lineJoin = .round
+        bounds = .zero
+        shadowColor = NSColor.black.cgColor
+        shadowOpacity = 0.35
+        shadowRadius = 2
+        shadowOffset = CGSize(width: 0, height: -1)
+        zPosition = 10
+    }
+
+    override init(layer: Any) { super.init(layer: layer) }
+    required init?(coder: NSCoder) { fatalError("not used") }
 }
 
 /// Small rounded translucent label.

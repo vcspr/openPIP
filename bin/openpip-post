@@ -4,6 +4,7 @@
 #   openpip-post <start|step|end|error> "<text>" ["<app>"] ["<window title part>"]
 #
 # Env: OPENPIP_AGENT (agent name, default "cli"), OPENPIP_SOCK (socket path).
+# Agent cursor (optional): OPENPIP_X, OPENPIP_Y, OPENPIP_COORDS (window|screen|pixels), OPENPIP_MAXEDGE.
 # Always exits 0, so a hook that calls it can never break an agent.
 
 SOCK="${OPENPIP_SOCK:-$HOME/.openpip/openpip.sock}"
@@ -22,6 +23,14 @@ esc() { printf '%s' "$1" | tr '\011\012\015' '   ' | tr -d '\000-\037' | sed 's/
 json="{\"v\":1,\"agent\":\"$(esc "$AGENT")\",\"status\":\"$1\",\"text\":\"$(esc "$2")\""
 [ -n "$3" ] && json="$json,\"app\":\"$(esc "$3")\""
 [ -n "$4" ] && json="$json,\"window\":\"$(esc "$4")\""
+
+# Numbers go in unquoted, so only plain numbers are accepted.
+num() { case "$1" in ''|-|.|*[!0-9.-]*|*.*.*|?*-*) return 1 ;; *) return 0 ;; esac; }
+if num "$OPENPIP_X" && num "$OPENPIP_Y"; then
+    json="$json,\"x\":$OPENPIP_X,\"y\":$OPENPIP_Y"
+    case "$OPENPIP_COORDS" in window|screen|pixels) json="$json,\"coords\":\"$OPENPIP_COORDS\"" ;; esac
+    num "$OPENPIP_MAXEDGE" && json="$json,\"maxEdge\":$OPENPIP_MAXEDGE"
+fi
 json="$json}"
 
 printf '%s\n' "$json" | nc -U -w 1 "$SOCK" >/dev/null 2>&1

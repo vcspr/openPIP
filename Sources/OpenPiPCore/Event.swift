@@ -17,9 +17,18 @@ public struct Event: Equatable, Sendable {
     public var pid: Int32?
     public var x: Double?
     public var y: Double?
+    /// What `x`/`y` measure: "window" (default, points from the window's top-left), "screen"
+    /// (global points, top-left origin) or "pixels" (window screenshot pixels). See `CursorMapper`.
+    public var coords: String?
+    /// Size of the image `x`/`y` were measured on. Optional; overrides `coords`.
+    public var w: Double?
+    public var h: Double?
+    /// For "pixels": the screenshot was shrunk so its long edge is at most this (OCU uses 1280).
+    public var maxEdge: Double?
 
     public init(agent: String, status: Status, text: String, app: String? = nil, window: String? = nil,
-                pid: Int32? = nil, x: Double? = nil, y: Double? = nil) {
+                pid: Int32? = nil, x: Double? = nil, y: Double? = nil, coords: String? = nil,
+                w: Double? = nil, h: Double? = nil, maxEdge: Double? = nil) {
         self.agent = agent
         self.status = status
         self.text = Event.clean(text)
@@ -28,6 +37,10 @@ public struct Event: Equatable, Sendable {
         self.pid = pid
         self.x = x
         self.y = y
+        self.coords = coords
+        self.w = w
+        self.h = h
+        self.maxEdge = maxEdge
     }
 
     /// Parses one JSON line. Returns nil for anything malformed; unknown fields are ignored.
@@ -41,7 +54,8 @@ public struct Event: Equatable, Sendable {
         else { return nil }
         return Event(agent: agent, status: status, text: raw.text ?? "",
                      app: raw.app.nonEmpty, window: raw.window.nonEmpty,
-                     pid: raw.pid, x: raw.x, y: raw.y)
+                     pid: raw.pid, x: raw.x, y: raw.y, coords: raw.coords.nonEmpty,
+                     w: raw.w, h: raw.h, maxEdge: raw.maxEdge)
     }
 
     static func clean(_ text: String) -> String {
@@ -60,6 +74,10 @@ public struct Event: Equatable, Sendable {
         var pid: Int32?
         var x: Double?
         var y: Double?
+        var coords: String?
+        var w: Double?
+        var h: Double?
+        var maxEdge: Double?
     }
 }
 

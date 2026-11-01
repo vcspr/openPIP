@@ -15,6 +15,15 @@ final class EventTests: XCTestCase {
         XCTAssertEqual(e.y, 96)
     }
 
+    func testParsesCursorFields() throws {
+        let line = #"{"v":1,"agent":"ocu","status":"step","text":"click","x":10,"y":20,"coords":"pixels","w":100,"h":50,"maxEdge":1280}"#
+        let e = try XCTUnwrap(Event.parse(line))
+        XCTAssertEqual(e.coords, "pixels")
+        XCTAssertEqual(e.w, 100)
+        XCTAssertEqual(e.h, 50)
+        XCTAssertEqual(e.maxEdge, 1280)
+    }
+
     func testOptionalFieldsMayBeMissing() throws {
         let e = try XCTUnwrap(Event.parse(#"{"v":1,"agent":"a","status":"end","text":"Done"}"#))
         XCTAssertEqual(e.status, .end)

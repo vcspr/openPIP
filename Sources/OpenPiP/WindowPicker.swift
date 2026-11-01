@@ -39,7 +39,8 @@ final class WindowPicker {
                    title: w.title,
                    pid: w.owningApplication?.processID ?? 0,
                    area: Double(w.frame.width * w.frame.height),
-                   isOnScreen: w.isOnScreen)
+                   isOnScreen: w.isOnScreen,
+                   frame: w.frame)
     }
 
     /// Rebuilds `menu` with one item per visible titled window, grouped by app.
@@ -77,6 +78,17 @@ final class WindowPicker {
             item.state = w.windowID == current ? .on : .off
             menu.addItem(item)
         }
+    }
+
+    /// Pixels per point of the display that holds most of `frame` (global points, top-left origin).
+    static func displayScale(for frame: CGRect) -> CGFloat {
+        guard let primary = NSScreen.screens.first else { return 2 }
+        let flipped = CGRect(x: frame.minX, y: primary.frame.height - frame.maxY, width: frame.width, height: frame.height)
+        let best = NSScreen.screens.max { a, b in
+            a.frame.intersection(flipped).width * a.frame.intersection(flipped).height
+                < b.frame.intersection(flipped).width * b.frame.intersection(flipped).height
+        }
+        return best?.backingScaleFactor ?? primary.backingScaleFactor
     }
 
     static func icon(pid: pid_t?) -> NSImage? {

@@ -44,6 +44,8 @@ so after a rebuild macOS may ask again. Always run the copy in `~/Applications`.
 - **Click-Through** (⌃⌥P anywhere) lets clicks pass through the panel.
 - **Always Show Panel** keeps it up with no agent activity. **Pause Mirror** stops capture.
 - Right-click the panel for the same menu.
+- **Show Agent Cursor** draws the agent's pointer on the live card and a ripple on each click, when
+  events carry `x`/`y`.
 
 The panel shows when an event arrives. It hides 5 s after an `end`/`error` event, or after 10 s with no
 event and no change in the mirrored window.
@@ -72,14 +74,21 @@ Fallback: append lines to `~/.openpip/events.jsonl` (only lines added after laun
 | `text` | optional | caption, cut to 120 characters |
 | `app` | optional | app name or bundle id to mirror |
 | `window` | optional | part of the window title |
-| `pid`, `x`, `y` | optional | `x`/`y` are read but not drawn yet (v2) |
+| `pid` | optional | process id of the app to mirror |
+| `x`, `y` | optional | where the agent points or clicks; moves the agent cursor |
+| `coords` | optional | what `x`/`y` measure: `window` (default, points from the window's top-left), `screen` (global points, top-left origin), `pixels` (window screenshot pixels) |
+| `maxEdge` | optional | for `pixels`: the screenshot was shrunk so its long edge is at most this (open-computer-use uses 1280) |
+| `w`, `h` | optional | size of the image `x`/`y` were measured on; wins over `coords` |
 
 Unknown fields are ignored. Bad lines are dropped.
 
 ```bash
 ~/.openpip/bin/openpip-post step "Clicking Send" Mail           # status, text, [app], [window]
 OPENPIP_AGENT=ocu ~/.openpip/bin/openpip-post end "Done"
+OPENPIP_X=120 OPENPIP_Y=48 ~/.openpip/bin/openpip-post step "Clicking New" Notes   # cursor, window points
 ```
+
+Cursor env vars: `OPENPIP_X`, `OPENPIP_Y`, `OPENPIP_COORDS`, `OPENPIP_MAXEDGE`.
 
 `openpip-post` always exits 0, even when the app is not running.
 
@@ -103,13 +112,14 @@ OPENPIP_AGENT=ocu ~/.openpip/bin/openpip-post end "Done"
 ```
 
 It posts `click · TextEdit` style captions, mirrors the `app` named in open-computer-use tool calls, and
-uses "Google Chrome" for Claude in Chrome. It prints nothing and always exits 0.
+uses "Google Chrome" for Claude in Chrome. open-computer-use clicks with `x`/`y` move the agent cursor
+(it reads the screenshot size from `~/.config/ocu/config.json`, default 1280). It prints nothing and always exits 0.
 
 ## Layout
 
 ```
 Sources/OpenPiPCore/   pure logic, unit tested: Event, LineBuffer, AutoHide, WindowMatcher, DenyList,
-                        FrameChange, CardStack + CardLayout
+                        FrameChange, CardStack + CardLayout, CursorMapper
 Sources/OpenPiP/       app: AppDelegate (menu + wiring), PanelController, CaptureSession, WindowPicker,
                         EventServer, Permissions, HotKey, Settings
 Support/Info.plist      bundle id app.hemii.openpip, LSUIElement
@@ -119,7 +129,7 @@ bin/                    openpip-post, openpip-hook
 
 ## Roadmap
 
-Agent cursor dot from `x`/`y`, hook installer, MCP wrapper for OCU, OCU cursor-file reader, live (not frozen)
+Cursor for Claude in Chrome (its points are page-relative), hook installer, MCP wrapper for OCU, OCU cursor-file reader, live (not frozen)
 back cards, opt-in "follow frontmost window", Accessibility click-to-raise, optional caption log.
 
 ## Contributing

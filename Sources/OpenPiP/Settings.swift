@@ -26,6 +26,12 @@ enum Settings {
         set { d.set(newValue, forKey: "followAgent") }
     }
 
+    /// Draw the agent's pointer and click ripples on the live card when events carry x/y.
+    static var showCursor: Bool {
+        get { d.object(forKey: "showCursor") as? Bool ?? true }
+        set { d.set(newValue, forKey: "showCursor") }
+    }
+
     /// How many windows the stack keeps (front one live, the rest frozen and blurred).
     static var maxCards: Int {
         get { d.object(forKey: "maxCards") as? Int ?? 3 }

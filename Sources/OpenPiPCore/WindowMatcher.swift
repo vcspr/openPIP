@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 /// A capturable window, copied out of ScreenCaptureKit so matching stays testable.
 public struct WindowInfo: Equatable, Sendable {
@@ -9,9 +10,11 @@ public struct WindowInfo: Equatable, Sendable {
     public var pid: Int32
     public var area: Double
     public var isOnScreen: Bool
+    /// Global screen points, top-left origin.
+    public var frame: CGRect
 
     public init(id: UInt32, appName: String, bundleID: String, title: String?, pid: Int32,
-                area: Double, isOnScreen: Bool) {
+                area: Double, isOnScreen: Bool, frame: CGRect = .zero) {
         self.id = id
         self.appName = appName
         self.bundleID = bundleID
@@ -19,6 +22,7 @@ public struct WindowInfo: Equatable, Sendable {
         self.pid = pid
         self.area = area
         self.isOnScreen = isOnScreen
+        self.frame = frame
     }
 }
 
