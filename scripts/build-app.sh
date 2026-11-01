@@ -1,7 +1,9 @@
 #!/bin/bash
 # Build OpenPiP.app with SwiftPM and ad-hoc sign it. No Xcode project, no Developer ID.
 #
-#   scripts/build-app.sh            -> build/OpenPiP.app
+#   scripts/build-app.sh            -> build.noindex/OpenPiP.app
+#                                      (Spotlight skips .noindex folders, so macOS never lists this
+#                                      copy as a second OpenPiP)
 #   scripts/build-app.sh --install  -> also copy to ~/Applications/OpenPiP.app
 #                                      and install openpip-post / openpip-hook to ~/.openpip/bin
 #
@@ -13,7 +15,7 @@ cd "$(dirname "$0")/.."
 swift build -c release --arch arm64
 BIN="$(swift build -c release --arch arm64 --show-bin-path)/OpenPiP"
 
-APP=build/OpenPiP.app
+APP=build.noindex/OpenPiP.app
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/OpenPiP"

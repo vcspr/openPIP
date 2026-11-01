@@ -3,6 +3,8 @@
 **Picture-in-picture for AI agents on macOS.** See what your agents are doing: a live mirror of the window
 a computer-use agent is working in, or a live task list and terminal for agents that work headless.
 
+![A live window card with the agent cursor, and a session card blurred behind it](docs/images/window-card.png)
+
 OpenPiP is a small always-on-top stack of window cards. The front card is a live mirror of the window the
 agent is using right now. Older windows stay behind it, shifted up and left, lightly blurred. No bar, no
 background: only the cards float. It is a menu-bar app with no Dock icon.
@@ -76,6 +78,8 @@ agents, which run Claude Code (shown by their OpenBot name, read from OpenBot's 
 - the last step it took,
 - a small terminal with its latest shell commands and the end of their output.
 
+![A session card: task progress, the last step, and a terminal with recent commands](docs/images/session-card.png)
+
 Click the item again to stop tracking. **Auto-Track Active Agents** adds sessions on their own as soon as
 they start writing. Session cards read `~/.claude/projects/*/*.jsonl` on this Mac only, show it on your
 screen, and store nothing.
@@ -92,7 +96,10 @@ Password managers and Keychain Access are never mirrored ("Hidden for privacy").
 
 The panel hides itself from screen capture (`sharingType = .none`) so agents' screenshots do not see it.
 It also will not show in your own screenshots. To record a demo, start it with
-`OPENPIP_SHOW_IN_CAPTURE=1 ~/Applications/OpenPiP.app/Contents/MacOS/OpenPiP`.
+`OPENPIP_SHOW_IN_CAPTURE=1 ~/Applications/OpenPiP.app/Contents/MacOS/OpenPiP`. Two more options help with demos:
+`OPENPIP_PANEL_FRAME="x,y,w,h"` places the panel (screen points, bottom-left origin), and
+`OPENPIP_PROJECTS_DIR=<folder>` reads session logs from another folder than `~/.claude/projects`.
+The README pictures use made-up demo data.
 
 ## Event feed
 

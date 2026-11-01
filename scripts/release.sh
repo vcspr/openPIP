@@ -28,13 +28,13 @@ if ! git diff --quiet Support/Info.plist; then
 fi
 
 scripts/build-app.sh
-ZIP="build/OpenPiP-$VERSION.zip"
+ZIP="build.noindex/OpenPiP-$VERSION.zip"
 # The shell tools sit next to the app, not inside it: macOS kills anything run from inside a
 # downloaded app it has not approved yet, and the cask links these onto PATH before first launch.
-STAGE=build/stage
+STAGE=build.noindex/stage
 rm -rf "$STAGE" "$ZIP"
 mkdir -p "$STAGE/bin"
-ditto build/OpenPiP.app "$STAGE/OpenPiP.app"
+ditto build.noindex/OpenPiP.app "$STAGE/OpenPiP.app"
 install -m 755 bin/openpip-post bin/openpip-hook "$STAGE/bin/"
 ditto -c -k --sequesterRsrc "$STAGE" "$ZIP"
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$PWD/$STAGE/OpenPiP.app" 2>/dev/null || true

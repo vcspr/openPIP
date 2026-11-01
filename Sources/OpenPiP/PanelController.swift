@@ -48,6 +48,13 @@ final class PanelController {
         let restored = panel.setFrameUsingName(Self.autosaveName)
         panel.setFrameAutosaveName(Self.autosaveName)
         if !restored { resetPosition() }
+        // OPENPIP_PANEL_FRAME="x,y,w,h" (screen points, bottom-left origin) places the panel exactly,
+        // for recording demos.
+        let parts = ProcessInfo.processInfo.environment["OPENPIP_PANEL_FRAME"]?
+            .split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) } ?? []
+        if parts.count == 4 {
+            panel.setFrame(NSRect(x: parts[0], y: parts[1], width: parts[2], height: parts[3]), display: true)
+        }
     }
 
     var contextMenu: NSMenu? {

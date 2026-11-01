@@ -17,7 +17,9 @@ struct AgentSession: Equatable {
 /// are read here; a session's content is read only once it is tracked.
 @MainActor
 final class AgentScanner {
-    private let root = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/projects")
+    /// OPENPIP_PROJECTS_DIR points the scanner at another folder (demos, tests).
+    private let root = ProcessInfo.processInfo.environment["OPENPIP_PROJECTS_DIR"].map { URL(fileURLWithPath: $0) }
+        ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/projects")
     private let home = NSHomeDirectory()
     private var openBotNames: [String: String] = [:]
     private var namesFetched = Date.distantPast
