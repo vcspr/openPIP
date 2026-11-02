@@ -14,6 +14,22 @@ final class CardStackTests: XCTestCase {
         XCTAssertEqual(s.front, 2)
     }
 
+    func testInsertBehindFrontKeepsTheFrontCard() {
+        var s = CardStack(limit: 3)
+        s.push(1)
+        s.push(2)
+        XCTAssertEqual(s.insertBehindFront(9), [])
+        XCTAssertEqual(s.ids, [2, 9, 1])
+        XCTAssertEqual(s.insertBehindFront(7), [1])
+        XCTAssertEqual(s.ids, [2, 7, 9])
+    }
+
+    func testInsertBehindFrontOnEmptyStackBecomesFront() {
+        var s = CardStack(limit: 3)
+        s.insertBehindFront(5)
+        XCTAssertEqual(s.ids, [5])
+    }
+
     func testPushingExistingWindowMovesItToFront() {
         var s = CardStack(limit: 3)
         s.push(1); s.push(2); s.push(3)

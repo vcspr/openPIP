@@ -80,6 +80,24 @@ agents, which run Claude Code (shown by their OpenBot name, read from OpenBot's 
 
 ![A session card: task progress, the last step, and a terminal with recent commands](docs/images/session-card.png)
 
+### Images an agent made
+
+Design and render jobs make images, and the paths get lost in the log. When a tracked agent opens
+(`Read`), writes or shares (`SendUserFile`, OpenBot's `attach_files_to_response`) an image, OpenPiP adds
+an **image card** next to its session card:
+
+- the image, with the agent's name, the file name, its age and "3 / 24",
+- the card takes the shape of the image. Very tall or wide images get a blurred copy around them, not
+  black bars.
+- a film strip of its last 30 images along the bottom. A gold edge means the agent shared it with you.
+- Click a thumbnail, or scroll over the card, to browse. After 10 s it goes back to the newest image.
+- A new image brings the card to the front, unless a window card is busy there.
+- Click the big image to open it in Preview. **Open Image in Preview** and **Show Image in Finder** are in
+  the menu too.
+
+**Agents → Show All New Images** also lists every new image in the agent's work folder, also the ones it
+never opened. Image cards show the files where they are. Nothing is copied or uploaded.
+
 Click the item again to stop tracking. **Auto-Track Active Agents** adds sessions on their own as soon as
 they start writing. Session cards read `~/.claude/projects/*/*.jsonl` on this Mac only, show it on your
 screen, and store nothing.
@@ -160,10 +178,11 @@ uses "Google Chrome" for Claude in Chrome. open-computer-use clicks with `x`/`y`
 
 ```
 Sources/OpenPiPCore/   pure logic, unit tested: Event, LineBuffer, AutoHide, WindowMatcher, DenyList,
-                        FrameChange, CardStack + CardLayout, CursorMapper, SessionState, SessionLabel
+                        FrameChange, CardStack + CardLayout, CursorMapper, SessionState, SessionLabel,
+                        ImageLog, ImageBrowser + ImageStrip
 Sources/OpenPiP/       app: AppDelegate (menu + wiring), PanelController, CaptureSession, WindowPicker,
                         EventServer, Permissions, HotKey, Settings, SessionWatcher, AgentScanner,
-                        SessionCardRenderer
+                        SessionCardRenderer, ImageCardRenderer
 Support/Info.plist      bundle id app.hemii.openpip, LSUIElement
 scripts/build-app.sh    SwiftPM release build -> .app -> codesign -s -
 scripts/release.sh      version bump, zip, GitHub release, Homebrew cask update

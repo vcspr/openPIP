@@ -29,7 +29,8 @@ public struct TerminalEntry: Equatable, Sendable {
 ///
 /// Reads: the `ai-title` line (session name); TaskCreate / TaskUpdate, TodoWrite and the desktop
 /// app's update_plan (task list); Bash calls and their results (terminal); the latest tool call or
-/// message (one-line status). Everything else is ignored.
+/// message (one-line status); images the agent read, wrote or shared (`ImageLog`). Everything else
+/// is ignored.
 public struct SessionState: Equatable, Sendable {
     public static let maxTerminalEntries = 5
 
@@ -38,6 +39,8 @@ public struct SessionState: Equatable, Sendable {
     public private(set) var terminal: [TerminalEntry] = []
     public private(set) var lastAction: String?
     public private(set) var lastTimestamp: Date?
+    /// Images the agent made, opened or shared.
+    public private(set) var images = ImageLog()
 
     public init() {}
 
@@ -63,6 +66,7 @@ public struct SessionState: Equatable, Sendable {
               let obj = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
               let type = obj["type"] as? String else { return false }
         let before = self
+        images.apply(object: obj)
         switch type {
         case "ai-title":
             if let t = (obj["aiTitle"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty {
@@ -88,7 +92,7 @@ public struct SessionState: Equatable, Sendable {
                            isError: item["is_error"] as? Bool ?? false, extra: obj["toolUseResult"])
             }
         default:
-            return false
+            break
         }
         return self != before
     }

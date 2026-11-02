@@ -68,6 +68,20 @@ final class PanelController {
         set { view.onCardClick = newValue }
     }
 
+    /// Called when the front card is clicked without dragging. The point is a fraction of the card
+    /// from its top-left (0...1).
+    var onFrontClick: ((UInt32, CGPoint) -> Void)? {
+        get { view.onFrontClick }
+        set { view.onFrontClick = newValue }
+    }
+
+    /// Called when the user scrolls over the front card: card id, delta (positive = up or left),
+    /// and whether it came from a trackpad (many small deltas) or a wheel (one notch per event).
+    var onFrontScroll: ((UInt32, CGFloat, Bool) -> Void)? {
+        get { view.onFrontScroll }
+        set { view.onFrontScroll = newValue }
+    }
+
     var opacity: Double {
         get { panel.alphaValue }
         set { panel.alphaValue = max(0.2, min(1, newValue)) }
@@ -103,7 +117,7 @@ final class PanelController {
         view.setFrame(surface, for: id)
     }
 
-    /// Replaces a session card's picture.
+    /// Replaces a drawn card's picture (session or image card). The card takes the picture's shape.
     func setImage(_ image: CGImage, for id: UInt32) {
         view.setImage(image, for: id)
     }
@@ -128,6 +142,8 @@ final class PanelView: NSView {
     private static let blurRadius: CGFloat = 3
 
     var onCardClick: ((UInt32) -> Void)?
+    var onFrontClick: ((UInt32, CGPoint) -> Void)?
+    var onFrontScroll: ((UInt32, CGFloat, Bool) -> Void)?
 
     private var cards: [CardModel] = []
     private var layers: [UInt32: CardLayer] = [:]
@@ -199,6 +215,12 @@ final class PanelView: NSView {
         guard let i = cards.firstIndex(where: { $0.id == id }) else { return }
         cards[i].content = image
         layers[id]?.setContent(image)
+        // Image cards change shape with the picture they show.
+        let aspect = CGFloat(image.width) / CGFloat(max(1, image.height))
+        if abs(aspect - cards[i].aspect) > 0.01 {
+            cards[i].aspect = aspect
+            relayout(animated: false)
+        }
     }
 
     func setCursor(_ fraction: CGPoint?, for id: UInt32, click: Bool) {
@@ -272,12 +294,40 @@ final class PanelView: NSView {
             onCardClick?(cards[i].id)
             return
         }
+        if dragEdges.isEmpty, let onFrontClick, cardIndex(at: p) == 0, let f = frames.first {
+            // Front card: a click goes to the card, a drag moves the panel.
+            if trackClickOrMove(window) {
+                onFrontClick(cards[0].id, CGPoint(x: (p.x - f.minX) / f.width, y: (f.maxY - p.y) / f.height))
+            }
+            return
+        }
         if dragEdges.isEmpty {
             window.performDrag(with: event)
             return
         }
         startFrame = window.frame
         startMouse = NSEvent.mouseLocation
+    }
+
+    /// Follows the mouse until it is released. Moves the panel once the mouse travels more than a
+    /// few points. Returns true when it was a plain click.
+    private func trackClickOrMove(_ window: NSWindow) -> Bool {
+        let start = NSEvent.mouseLocation, origin = window.frame.origin
+        var moving = false
+        while let e = window.nextEvent(matching: [.leftMouseUp, .leftMouseDragged]) {
+            let m = NSEvent.mouseLocation
+            if e.type == .leftMouseUp { return !moving }
+            if !moving, hypot(m.x - start.x, m.y - start.y) > 3 { moving = true }
+            if moving { window.setFrameOrigin(NSPoint(x: origin.x + m.x - start.x, y: origin.y + m.y - start.y)) }
+        }
+        return false
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        guard let onFrontScroll, cardIndex(at: p) == 0 else { return super.scrollWheel(with: event) }
+        let delta = abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY) ? event.scrollingDeltaX : event.scrollingDeltaY
+        if delta != 0 { onFrontScroll(cards[0].id, delta, event.hasPreciseScrollingDeltas) }
     }
 
     override func mouseDragged(with event: NSEvent) {

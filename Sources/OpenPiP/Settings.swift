@@ -38,6 +38,13 @@ enum Settings {
         set { d.set(newValue, forKey: "autoTrackAgents") }
     }
 
+    /// Image cards also list every new image in the agent's work folder, not only the ones it
+    /// opened or shared.
+    static var showAllNewImages: Bool {
+        get { d.bool(forKey: "showAllNewImages") }
+        set { d.set(newValue, forKey: "showAllNewImages") }
+    }
+
     /// How many windows the stack keeps (front one live, the rest frozen and blurred).
     static var maxCards: Int {
         get { d.object(forKey: "maxCards") as? Int ?? 3 }

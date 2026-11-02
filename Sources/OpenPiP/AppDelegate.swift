@@ -21,12 +21,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let watcher: SessionWatcher
         var state = SessionState()
         var image: CGImage?
+        /// Id of this session's image card.
+        let imageID: UInt32
+        let trackedAt = Date()
+        /// New images in the work folder ("Show All New Images"), with their dates.
+        var found: [String: Date] = [:]
+        var scanning = false
 
-        init(url: URL, label: String) {
+        init(url: URL, label: String, imageID: UInt32) {
             self.url = url
             self.label = label
+            self.imageID = imageID
             watcher = SessionWatcher(url: url)
         }
+    }
+
+    /// The images of one tracked session, with a film strip to browse them.
+    private final class ImageCard {
+        let sessionID: UInt32
+        var list: [AgentImage] = []
+        var browser = ImageBrowser()
+        var image: CGImage?
+        /// Size of the drawn card in points; it follows the shown image's shape.
+        var size = CGSize(width: ImageCardRenderer.width, height: 480)
+        /// Shape of the image shown last, used while the next one loads.
+        var lastAspect: CGFloat?
+        /// Set once the card was in the stack. After that it comes back only for a new image.
+        var shown = false
+        var scroll: CGFloat = 0
+
+        init(sessionID: UInt32) { self.sessionID = sessionID }
     }
 
     private let panel = PanelController()
@@ -55,8 +79,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var stack = CardStack(limit: Settings.maxCards)
     private var cards: [UInt32: Card] = [:]
     private var sessions: [UInt32: TrackedSession] = [:]
-    /// Session cards get ids far above any window id, so the two kinds never collide.
+    private var imageCards: [UInt32: ImageCard] = [:]
+    private let loader = ImageLoader()
+    private var imageRedrawQueued = false
+    private var lastFolderScan = Date.distantPast
+    /// Session cards get ids far above any window id, so the two kinds never collide. A session's
+    /// image card id is its own id minus `imageIDOffset`.
     private var nextSessionID: UInt32 = 0xF000_0000
+    private static let imageIDOffset: UInt32 = 0x1000_0000
+    private var openImageItem: NSMenuItem!
+    private var revealImageItem: NSMenuItem!
+    private var showAllImagesItem: NSMenuItem!
     private let scanner = AgentScanner()
     private var activeAgents: [AgentSession] = []
     private var lastAgentScan = Date.distantPast
@@ -80,6 +113,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         buildMenu()
         panel.contextMenu = mainMenu
         panel.onCardClick = { [weak self] id in self?.bringToFront(id) }
+        panel.onFrontClick = { [weak self] id, point in self?.frontClicked(id, at: point) }
+        panel.onFrontScroll = { [weak self] id, delta, precise in self?.frontScrolled(id, delta: delta, precise: precise) }
+        loader.onLoad = { [weak self] in self?.queueImageRedraw() }
 
         capture.onFrame = { [weak self] surface in
             guard let self, let id = self.capture.windowID, self.cards[id] != nil else { return }
@@ -203,6 +239,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func bringToFront(_ id: UInt32) {
+        if imageCards[id] != nil {
+            forget(stack.push(id))
+            autoHide.pinned = true
+            render()
+            tick()
+            return
+        }
         if sessions[id] != nil {
             showSession(id)
             autoHide.pinned = true
@@ -250,6 +293,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if let t = sessions[id] {
                 return CardModel(id: id, content: t.image, aspect: SessionCardRenderer.aspect, note: nil)
             }
+            if let c = imageCards[id] {
+                return CardModel(id: id, content: c.image, aspect: c.size.width / c.size.height, note: nil)
+            }
             guard let c = cards[id] else { return nil }
             return CardModel(id: id, content: c.hidden ? nil : c.surface, aspect: c.aspect, note: c.note)
         }
@@ -292,6 +338,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if now.timeIntervalSince(lastSessionRedraw) > 5 {
             lastSessionRedraw = now
             sessions.keys.forEach(redraw)
+            for id in stack.ids where imageCards[id] != nil { redrawImage(id) }
+        }
+        if Settings.showAllNewImages, now.timeIntervalSince(lastFolderScan) > 10 {
+            lastFolderScan = now
+            sessions.keys.forEach(scanFolder)
         }
 
         if front != nil, now.timeIntervalSince(lastWindowCheck) > 2 {
@@ -331,7 +382,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         let id = nextSessionID
         nextSessionID &+= 1
-        let t = TrackedSession(url: agent.url, label: agent.label)
+        let t = TrackedSession(url: agent.url, label: agent.label, imageID: id &- Self.imageIDOffset)
         t.state = SessionState()
         sessions[id] = t
         t.watcher.onChange = { [weak self] state in
@@ -339,6 +390,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             t.state = state
             self.redraw(id)
             self.sessionChanged(id)
+            self.imagesChanged(id)
         }
         redraw(id)
         t.watcher.start()
@@ -347,7 +399,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func untrack(_ id: UInt32) {
         stack.remove(id)
-        forget([id])
+        stopSession(id)
         if let next = front, !next.hidden { wantsCapture = true }
         render()
         tick()
@@ -381,12 +433,196 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panel.setImage(image, for: id)
     }
 
-    /// Lets go of cards that left the stack: window cards are forgotten, session watchers stop.
+    /// Lets go of cards that left the stack: window cards are forgotten. A session stops once
+    /// neither its session card nor its image card is in the stack.
     private func forget(_ ids: [UInt32]) {
         for id in ids {
             cards[id] = nil
-            sessions.removeValue(forKey: id)?.watcher.stop()
+            if let t = sessions[id], !stack.ids.contains(t.imageID) { stopSession(id) }
+            if let c = imageCards[id], !stack.ids.contains(c.sessionID) { stopSession(c.sessionID) }
         }
+    }
+
+    private func stopSession(_ id: UInt32) {
+        guard let t = sessions.removeValue(forKey: id) else { return }
+        t.watcher.stop()
+        stack.remove(t.imageID)
+        imageCards[t.imageID] = nil
+    }
+
+    // MARK: image cards
+
+    /// The images to show for a session: the ones from its log, plus new files in its work folder
+    /// when "Show All New Images" is on. Deleted files drop out.
+    private func displayImages(_ t: TrackedSession) -> [AgentImage] {
+        var log = t.state.images
+        if Settings.showAllNewImages {
+            for (path, date) in t.found { log.addFound(path, at: date) }
+        }
+        return log.images.filter { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
+    /// A session's image list may have changed: add its image card, bring it forward for a new
+    /// image, and redraw it.
+    private func imagesChanged(_ sessionID: UInt32) {
+        guard let t = sessions[sessionID] else { return }
+        let list = displayImages(t)
+        guard !list.isEmpty else { return }
+        let id = t.imageID
+        let card = imageCards[id] ?? ImageCard(sessionID: sessionID)
+        imageCards[id] = card
+        let isNew = list.last?.path != card.list.last?.path
+        card.list = list
+        let fresh = list.last?.time.map { Date().timeIntervalSince($0) < 60 } ?? false
+        // A window card driven by events keeps the front; session and image cards give way.
+        let frontGivesWay = stack.front.map { sessions[$0] != nil || imageCards[$0] != nil } ?? true
+        let inStack = stack.ids.contains(id)
+        if isNew && fresh && Settings.followAgent && frontGivesWay && stack.front != id {
+            forget(stack.push(id))
+            autoHide.event(.step, at: Date())
+        } else if !inStack && (!card.shown || (isNew && fresh)) {
+            forget(stack.insertBehindFront(id))
+        }
+        if stack.ids.contains(id) { card.shown = true }
+        redrawImage(id)
+        if stack.ids.contains(id) != inStack || stack.front == id { render() }
+        tick()
+    }
+
+    private func redrawImage(_ id: UInt32) {
+        guard let card = imageCards[id], let t = sessions[card.sessionID] else { return }
+        card.list = displayImages(t)
+        let current = card.browser.current(in: card.list.map(\.path), now: Date())
+        let title = t.state.title ?? t.label
+        guard let image = ImageCardRenderer.render(card.list, current: current, title: title, loader: loader,
+                                                   now: Date(), fallbackAspect: card.lastAspect) else { return }
+        card.image = image
+        card.size = CGSize(width: CGFloat(image.width) / 2, height: CGFloat(image.height) / 2)
+        card.lastAspect = (card.size.height - ImageCardRenderer.stripHeight) > 0
+            ? card.size.width / (card.size.height - ImageCardRenderer.stripHeight) : nil
+        panel.setImage(image, for: id)
+    }
+
+    /// Thumbnails arrive one by one; redraw once per run of the main loop, not once per file.
+    private func queueImageRedraw() {
+        guard !imageRedrawQueued else { return }
+        imageRedrawQueued = true
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.imageRedrawQueued = false
+                for id in self.stack.ids where self.imageCards[id] != nil { self.redrawImage(id) }
+            }
+        }
+    }
+
+    private func frontClicked(_ id: UInt32, at point: CGPoint) {
+        guard let card = imageCards[id] else { return }
+        let size = card.size
+        let paths = card.list.map(\.path)
+        guard let current = card.browser.current(in: paths, now: Date()) else { return }
+        switch ImageCardRenderer.hit(CGPoint(x: point.x * size.width, y: point.y * size.height),
+                                     size: size, count: paths.count, current: current) {
+        case .thumb(let i):
+            card.browser.pick(paths[i], at: Date())
+            autoHide.pinned = true
+            redrawImage(id)
+        case .image:
+            openInPreview(paths[current])
+        case .none:
+            break
+        }
+    }
+
+    private func frontScrolled(_ id: UInt32, delta: CGFloat, precise: Bool) {
+        guard let card = imageCards[id] else { return }
+        // Trackpads send many small deltas: one image per 24 points. A wheel moves one per notch.
+        card.scroll += precise ? delta : (delta > 0 ? 24 : -24)
+        let steps = Int(card.scroll / 24)
+        guard steps != 0 else { return }
+        card.scroll -= CGFloat(steps) * 24
+        card.browser.step(-steps, in: card.list.map(\.path), at: Date())
+        autoHide.pinned = true
+        redrawImage(id)
+    }
+
+    /// The image shown on the front card, if the front card is an image card.
+    private var frontImagePath: String? {
+        guard let id = stack.front, let card = imageCards[id],
+              let i = card.browser.current(in: card.list.map(\.path), now: Date()) else { return nil }
+        return card.list[i].path
+    }
+
+    private func openInPreview(_ path: String) {
+        let url = URL(fileURLWithPath: path)
+        if let preview = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Preview") {
+            NSWorkspace.shared.open([url], withApplicationAt: preview, configuration: NSWorkspace.OpenConfiguration())
+        } else {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    @objc private func openFrontImage() {
+        if let path = frontImagePath { openInPreview(path) }
+    }
+
+    @objc private func revealFrontImage() {
+        if let path = frontImagePath {
+            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+        }
+    }
+
+    @objc private func toggleShowAllImages() {
+        Settings.showAllNewImages.toggle()
+        lastFolderScan = .distantPast
+        sessions.keys.forEach(imagesChanged)
+        tick()
+    }
+
+    /// Looks for new images in a session's work folder, off the main thread.
+    private func scanFolder(_ sessionID: UInt32) {
+        guard let t = sessions[sessionID], !t.scanning, let cwd = t.state.images.cwd else { return }
+        t.scanning = true
+        let since = t.trackedAt.addingTimeInterval(-30 * 60)
+        Task.detached(priority: .utility) {
+            let found = Self.newImages(in: cwd, since: since)
+            await MainActor.run { [weak self] in
+                guard let self, let t = self.sessions[sessionID] else { return }
+                t.scanning = false
+                if found != t.found {
+                    t.found = found
+                    self.imagesChanged(sessionID)
+                }
+            }
+        }
+    }
+
+    /// Image files under `folder` changed since `since`: the newest few, at most 6 folders deep.
+    /// Skips the home folder itself, hidden folders, packages and build folders, and stops after
+    /// 30,000 files so a huge folder cannot stall it.
+    nonisolated private static func newImages(in folder: String, since: Date) -> [String: Date] {
+        guard folder != NSHomeDirectory(), folder != "/" else { return [:] }
+        let keys: [URLResourceKey] = [.contentModificationDateKey, .isRegularFileKey]
+        guard let walk = FileManager.default.enumerator(
+            at: URL(fileURLWithPath: folder), includingPropertiesForKeys: keys,
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]) else { return [:] }
+        let skip: Set<String> = ["node_modules", "build", ".build", "DerivedData", "Pods", "venv"]
+        var hits: [(String, Date)] = []
+        var visited = 0
+        while let url = walk.nextObject() as? URL {
+            visited += 1
+            if visited > 30_000 { break }
+            if walk.level > 6 || skip.contains(url.lastPathComponent) {
+                walk.skipDescendants()
+                continue
+            }
+            guard ImageLog.isImagePath(url.path),
+                  let v = try? url.resourceValues(forKeys: Set(keys)), v.isRegularFile == true,
+                  let date = v.contentModificationDate, date > since else { continue }
+            hits.append((url.path, date))
+        }
+        return Dictionary(hits.sorted { $0.1 > $1.1 }.prefix(ImageLog.limit).map { ($0.0, $0.1) },
+                          uniquingKeysWith: { a, _ in a })
     }
 
     /// Looks for new agent sessions every 10 seconds while auto-track is on.
@@ -425,6 +661,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         autoTrackItem.target = self
         autoTrackItem.state = Settings.autoTrackAgents ? .on : .off
         agentsMenu.addItem(autoTrackItem)
+        showAllImagesItem = NSMenuItem(title: "Show All New Images", action: #selector(toggleShowAllImages), keyEquivalent: "")
+        showAllImagesItem.target = self
+        showAllImagesItem.state = Settings.showAllNewImages ? .on : .off
+        showAllImagesItem.toolTip = "Image cards also list every new image in the agent's work folder"
+        agentsMenu.addItem(showAllImagesItem)
         let note = NSMenuItem(title: "Reads Claude Code and OpenBot session logs on this Mac only", action: nil, keyEquivalent: "")
         note.isEnabled = false
         agentsMenu.addItem(note)
@@ -456,6 +697,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         statusLine.isEnabled = false
         mainMenu.addItem(statusLine)
+        openImageItem = item("Open Image in Preview", #selector(openFrontImage))
+        revealImageItem = item("Show Image in Finder", #selector(revealFrontImage))
         mainMenu.addItem(.separator())
 
         let mirrorItem = NSMenuItem(title: "Mirror Window", action: nil, keyEquivalent: "")
@@ -536,6 +779,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             clickThroughItem.state = panel.clickThrough ? .on : .off
             pauseItem.state = paused ? .on : .off
             clearItem.isEnabled = stack.front != nil
+            let hasImage = frontImagePath != nil
+            openImageItem.isHidden = !hasImage
+            revealImageItem.isHidden = !hasImage
             for i in stackSizeMenu.items { i.state = i.tag == stack.limit ? .on : .off }
         }
     }
@@ -564,8 +810,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func clearWindows() {
-        forget(stack.ids)
+        let ids = stack.ids
         stack.removeAll()
+        forget(ids)
         wantsCapture = false
         autoHide.pinned = false
         Task { await capture.stop() }

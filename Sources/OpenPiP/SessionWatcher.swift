@@ -48,14 +48,14 @@ final class SessionWatcher {
         let size = (try? handle.seekToEnd()) ?? 0
         let fullFrom = size > Self.fullReadBytes ? size - Self.fullReadBytes : 0
 
-        // Older part: task and title lines only.
+        // Older part: task, title and image lines only.
         var skim = LineBuffer(maxLineBytes: Self.maxLine)
         var pos: UInt64 = 0
         try? handle.seek(toOffset: 0)
         while pos < fullFrom, let data = try? handle.read(upToCount: Int(min(UInt64(Self.chunk), fullFrom - pos))),
               !data.isEmpty {
             pos += UInt64(data.count)
-            for line in skim.append(data) where SessionState.isTaskRelated(line) { state.apply(line) }
+            for line in skim.append(data) where SessionState.isTaskRelated(line) || ImageLog.isImageRelated(line) { state.apply(line) }
         }
 
         // Recent part: everything. A line cut at the boundary fails to parse and is skipped.

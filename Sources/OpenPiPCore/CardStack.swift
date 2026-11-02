@@ -19,6 +19,15 @@ public struct CardStack {
         return trim()
     }
 
+    /// Puts `id` right behind the front card, so it shows without taking the front.
+    /// Returns windows that fell off the back.
+    @discardableResult
+    public mutating func insertBehindFront(_ id: UInt32) -> [UInt32] {
+        ids.removeAll { $0 == id }
+        ids.insert(id, at: min(1, ids.count))
+        return trim()
+    }
+
     public mutating func remove(_ id: UInt32) {
         ids.removeAll { $0 == id }
     }
