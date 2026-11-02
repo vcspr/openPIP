@@ -110,7 +110,7 @@ public struct ImageLog: Equatable, Sendable {
             return filePath(input).map { [($0, .looked)] } ?? []
         case "Write", "Edit":
             return filePath(input).map { [($0, .wrote)] } ?? []
-        case "SendUserFile", _ where name.hasSuffix("attach_files_to_response"):
+        case _ where name == "SendUserFile" || name.hasSuffix("attach_files_to_response"):
             // Only the file lists, not captions or other text.
             let lists = ["files", "paths", "file_paths"].compactMap { input[$0] }
             return lists.flatMap(strings).filter(isImagePath).map { ($0, .shared) }

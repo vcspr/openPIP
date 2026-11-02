@@ -9,7 +9,9 @@ enum SessionCardRenderer {
     private static let pad: CGFloat = 18
     private static let activeWithin: TimeInterval = 30
 
-    static func render(_ s: SessionState, label: String, now: Date, scale: CGFloat = 2) -> CGImage? {
+    /// `hasImages` draws the "Actions | Images" switch in the top-right corner.
+    static func render(_ s: SessionState, label: String, now: Date, hasImages: Bool = false,
+                       scale: CGFloat = 2) -> CGImage? {
         let w = Int(size.width * scale), h = Int(size.height * scale)
         guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
                                   space: CGColorSpace(name: CGColorSpace.sRGB)!,
@@ -21,11 +23,11 @@ enum SessionCardRenderer {
         NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
         defer { NSGraphicsContext.current = previous }
 
-        draw(s, label: label, now: now)
+        draw(s, label: label, now: now, hasImages: hasImages)
         return ctx.makeImage()
     }
 
-    private static func draw(_ s: SessionState, label: String, now: Date) {
+    private static func draw(_ s: SessionState, label: String, now: Date, hasImages: Bool) {
         let width = size.width, inner = width - 2 * pad
         NSColor(srgbRed: 0.09, green: 0.09, blue: 0.10, alpha: 1).setFill()
         NSRect(origin: .zero, size: size).fill()
@@ -39,9 +41,12 @@ enum SessionCardRenderer {
         let count = total > 0 ? "\(done)/\(total)" : ""
         let countWidth = text(count, font: .systemFont(ofSize: 13, weight: .semibold), color: .white)
             .size().width
-        line(s.title ?? label, at: NSPoint(x: pad + 16, y: 16), width: inner - 16 - countWidth - 12,
+        // The header ends at the card edge, or at the switch when there is one.
+        let headerEnd = hasImages ? CardSwitch.frame(cardWidth: width).minX - 10 : width - pad
+        if hasImages { CardSwitchView.draw(active: .actions, cardWidth: width) }
+        line(s.title ?? label, at: NSPoint(x: pad + 16, y: 16), width: headerEnd - pad - 16 - countWidth - 12,
              font: .systemFont(ofSize: 15, weight: .semibold), color: .white)
-        line(count, at: NSPoint(x: width - pad - countWidth, y: 18), width: countWidth + 1,
+        line(count, at: NSPoint(x: headerEnd - countWidth, y: 18), width: countWidth + 1,
              font: .systemFont(ofSize: 13, weight: .semibold), color: NSColor(white: 1, alpha: 0.85))
         let sub = [s.title == nil ? nil : label, s.lastTimestamp.map { ago($0, now: now) }].compactMap { $0 }
         line(sub.joined(separator: " · "), at: NSPoint(x: pad + 16, y: 38), width: inner - 16,

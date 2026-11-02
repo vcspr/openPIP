@@ -27,14 +27,18 @@ public struct TerminalEntry: Equatable, Sendable {
 /// What an agent session is doing, rebuilt line by line from a Claude Code session log
 /// (`~/.claude/projects/<dir>/<session>.jsonl`). OpenBot agents write the same format.
 ///
-/// Reads: the `ai-title` line (session name); TaskCreate / TaskUpdate, TodoWrite and the desktop
+/// Reads: the `custom-title` and `ai-title` lines (session name); TaskCreate / TaskUpdate, TodoWrite and the desktop
 /// app's update_plan (task list); Bash calls and their results (terminal); the latest tool call or
 /// message (one-line status); images the agent read, wrote or shared (`ImageLog`). Everything else
 /// is ignored.
 public struct SessionState: Equatable, Sendable {
     public static let maxTerminalEntries = 5
 
-    public private(set) var title: String?
+    /// The session's name: the one set in the Claude desktop app (`custom-title`), else Claude
+    /// Code's own (`ai-title`).
+    public var title: String? { customTitle ?? aiTitle }
+    private var customTitle: String?
+    private var aiTitle: String?
     public private(set) var tasks: [SessionTask] = []
     public private(set) var terminal: [TerminalEntry] = []
     public private(set) var lastAction: String?
@@ -55,7 +59,7 @@ public struct SessionState: Equatable, Sendable {
     }
 
     private static let taskMarkers = [
-        #""TaskCreate""#, #""TaskUpdate""#, #""TodoWrite""#, "update_plan", #""ai-title""#,
+        #""TaskCreate""#, #""TaskUpdate""#, #""TodoWrite""#, "update_plan", #""ai-title""#, #""custom-title""#,
         #""toolUseResult":{"task""#,
     ]
 
@@ -69,8 +73,12 @@ public struct SessionState: Equatable, Sendable {
         images.apply(object: obj)
         switch type {
         case "ai-title":
-            if let t = (obj["aiTitle"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty {
-                title = t
+            if let t = Self.string(obj["aiTitle"])?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty {
+                aiTitle = t
+            }
+        case "custom-title":
+            if let t = Self.string(obj["customTitle"])?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty {
+                customTitle = t
             }
         case "assistant":
             readTimestamp(obj)
@@ -220,7 +228,7 @@ public struct SessionState: Equatable, Sendable {
         return ""
     }
 
-    nonisolated(unsafe) private static let ansi = try! NSRegularExpression(pattern: "\u{1B}\\[[0-9;?]*[ -/]*[@-~]")
+    private static let ansi = try! NSRegularExpression(pattern: "\u{1B}\\[[0-9;?]*[ -/]*[@-~]")
 
     private static func tail(_ text: String) -> [String] {
         let clean = ansi.stringByReplacingMatches(in: text, range: NSRange(text.startIndex..., in: text), withTemplate: "")

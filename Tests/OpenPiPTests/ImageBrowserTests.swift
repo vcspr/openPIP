@@ -82,3 +82,19 @@ final class ImageCardShapeTests: XCTestCase {
         XCTAssertEqual(s.height, 420 + 60)
     }
 }
+
+final class CardSwitchTests: XCTestCase {
+    func testSwitchSitsTopRight() {
+        let f = CardSwitch.frame(cardWidth: 560)
+        XCTAssertEqual(f.maxX, 560 - CardSwitch.margin)
+        XCTAssertEqual(f.minY, CardSwitch.margin)
+        XCTAssertEqual(f.size, CardSwitch.size)
+    }
+
+    func testLeftHalfIsActionsRightHalfIsImages() {
+        let f = CardSwitch.frame(cardWidth: 560)
+        XCTAssertEqual(CardSwitch.side(at: CGPoint(x: f.minX + 5, y: f.midY), cardWidth: 560), .actions)
+        XCTAssertEqual(CardSwitch.side(at: CGPoint(x: f.maxX - 5, y: f.midY), cardWidth: 560), .images)
+        XCTAssertNil(CardSwitch.side(at: CGPoint(x: 20, y: 200), cardWidth: 560))
+    }
+}

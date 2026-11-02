@@ -73,7 +73,8 @@ menu lists every Claude Code session whose log changed in the last 15 minutes. T
 agents, which run Claude Code (shown by their OpenBot name, read from OpenBot's own CLI). Pick one to add a
 **session card**:
 
-- the session name and a green dot while it is working,
+- the session name (the one you see in the Claude app, else Claude Code's own title), its work folder,
+  and a green dot while it is working,
 - its task list and progress (`TaskCreate`/`TaskUpdate`, `TodoWrite`, and the Claude desktop app's plan),
 - the last step it took,
 - a small terminal with its latest shell commands and the end of their output.
@@ -92,6 +93,8 @@ an **image card** next to its session card:
 - a film strip of its last 30 images along the bottom. A gold edge means the agent shared it with you.
 - Click a thumbnail, or scroll over the card, to browse. After 10 s it goes back to the newest image.
 - A new image brings the card to the front, unless a window card is busy there.
+- **Actions | Images** in the top-right corner flips between the agent's session card and its image
+  card (also **Show Images** / **Show Agent Actions** in the menu).
 - Click the big image to open it in Preview. **Open Image in Preview** and **Show Image in Finder** are in
   the menu too.
 

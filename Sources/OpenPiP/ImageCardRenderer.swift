@@ -66,6 +66,29 @@ final class ImageLoader {
     }
 }
 
+/// Draws the "Actions | Images" switch (see `CardSwitch`) into the current flipped graphics context.
+enum CardSwitchView {
+    static func draw(active: CardSwitch.Side, cardWidth: CGFloat) {
+        let f = CardSwitch.frame(cardWidth: cardWidth)
+        let radius = f.height / 2
+        NSColor(white: 0, alpha: 0.5).setFill()
+        NSBezierPath(roundedRect: f, xRadius: radius, yRadius: radius).fill()
+        let half = f.width / 2
+        let on = NSRect(x: active == .actions ? f.minX : f.minX + half, y: f.minY, width: half, height: f.height)
+            .insetBy(dx: 2, dy: 2)
+        NSColor(white: 1, alpha: 0.9).setFill()
+        NSBezierPath(roundedRect: on, xRadius: radius - 2, yRadius: radius - 2).fill()
+        let font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        let center = NSMutableParagraphStyle()
+        center.alignment = .center
+        for (side, label, x) in [(CardSwitch.Side.actions, "Actions", f.minX), (.images, "Images", f.minX + half)] {
+            let color = side == active ? NSColor(white: 0.1, alpha: 1) : NSColor(white: 1, alpha: 0.8)
+            NSAttributedString(string: label, attributes: [.font: font, .foregroundColor: color, .paragraphStyle: center])
+                .draw(in: NSRect(x: x, y: f.minY + 5, width: half, height: f.height - 6))
+        }
+    }
+}
+
 /// Draws an image card: the picked image, a ★ and the agent's name, "3 / 24", the file name, and a
 /// film strip of the latest images along the bottom (gold edge = shared, white = shown now).
 /// The card takes the shape of the image (see `ImageCardShape`), so no bars show beside it.
@@ -133,9 +156,10 @@ enum ImageCardRenderer {
         if let full { draw(full, in: area, ctx: ctx, fill: false) }
 
         pill((shown.kind == .shared ? "★  " : "") + title, at: NSPoint(x: 10, y: 10), align: .left)
-        pill("\(current + 1) / \(images.count)", at: NSPoint(x: size.width - 10, y: 10), align: .right)
+        CardSwitchView.draw(active: .images, cardWidth: size.width)
         let name = (shown.path as NSString).lastPathComponent
-        pill([name, shown.time.map { ago($0, now: now) }].compactMap { $0 }.joined(separator: " · "),
+        let count = "\(current + 1) / \(images.count)"
+        pill([name, shown.time.map { ago($0, now: now) }, count].compactMap { $0 }.joined(separator: " · "),
              at: NSPoint(x: 10, y: stripTop - 32), align: .left)
 
         filmStrip(images, current: current, stripTop: stripTop, loader: loader, ctx: ctx)

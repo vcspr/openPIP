@@ -45,25 +45,41 @@ final class AgentScanner {
             for file in files where file.pathExtension == "jsonl" {
                 guard let modified = try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
                       modified > cutoff else { continue }
-                let label = SessionLabel(projectDir: dir.lastPathComponent, home: home, openBotNames: names)
-                found.append(AgentSession(url: file, label: label.text, title: title(of: file), modified: modified))
+                let (title, cwd) = nameAndFolder(of: file)
+                let label = SessionLabel(projectDir: dir.lastPathComponent, home: home, openBotNames: names, cwd: cwd)
+                found.append(AgentSession(url: file, label: label.text, title: title, modified: modified))
             }
         }
         return found.sorted { $0.modified > $1.modified }
     }
 
-    /// The latest `ai-title` line in the last 512 KB of the log.
-    nonisolated private static func title(of file: URL) -> String? {
-        guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
+    /// The session name (`custom-title`, else `ai-title`) and the latest work folder, from the last
+    /// 512 KB of the log.
+    nonisolated private static func nameAndFolder(of file: URL) -> (String?, String?) {
+        guard let handle = try? FileHandle(forReadingFrom: file) else { return (nil, nil) }
         defer { try? handle.close() }
         let size = (try? handle.seekToEnd()) ?? 0
         let from = size > 512 * 1024 ? size - 512 * 1024 : 0
         try? handle.seek(toOffset: from)
-        guard let data = try? handle.readToEnd() else { return nil }
+        guard let data = try? handle.readToEnd() else { return (nil, nil) }
         var buffer = LineBuffer(maxLineBytes: 1 << 20)
         var state = SessionState()
-        for line in buffer.append(data) + buffer.flush() where line.contains(#""ai-title""#) { state.apply(line) }
-        return state.title
+        var cwd: String?
+        for line in buffer.append(data) + buffer.flush() {
+            if line.contains(#""ai-title""#) || line.contains(#""custom-title""#) { state.apply(line) }
+            if let c = workFolder(in: line) { cwd = c }
+        }
+        return (state.title, cwd)
+    }
+
+    nonisolated private static let cwdPattern = try! NSRegularExpression(pattern: #""cwd"\s*:\s*"((?:[^"\\]|\\.)*)""#)
+
+    /// The `cwd` field of a log line, found without parsing the whole line.
+    nonisolated private static func workFolder(in line: String) -> String? {
+        guard line.contains(#""cwd""#),
+              let m = cwdPattern.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)),
+              let r = Range(m.range(at: 1), in: line) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: Data("\"\(line[r])\"".utf8), options: .fragmentsAllowed)) as? String
     }
 
     /// Agent names from OpenBot's own CLI, refreshed at most every 5 minutes. Missing CLI is fine.

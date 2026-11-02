@@ -29,6 +29,15 @@ final class SessionStateTests: XCTestCase {
         XCTAssertEqual(s.title, "Build the bike sheet")
     }
 
+    func testCustomTitleFromTheDesktopAppWinsOverAiTitle() {
+        var s = SessionState()
+        s.apply(Lines.title("Auto title"))
+        s.apply(#"{"type":"custom-title","customTitle":"Cord guides on R3","sessionId":"s1"}"#)
+        s.apply(Lines.title("Later auto title"))
+        XCTAssertEqual(s.title, "Cord guides on R3")
+        XCTAssertTrue(SessionState.isTaskRelated(#"{"type":"custom-title","customTitle":"x"}"#))
+    }
+
     func testTaskCreateThenUpdateByReturnedId() {
         var s = SessionState()
         s.apply(Lines.toolUse("t1", "TaskCreate", #"{"subject":"Back up originals","description":"x"}"#))

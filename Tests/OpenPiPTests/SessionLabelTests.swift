@@ -32,4 +32,32 @@ final class SessionLabelTests: XCTestCase {
     func testHomeWithDotsIsMatched() {
         XCTAssertEqual(SessionLabel(projectDir: "-Users-j-doe-Code", home: "/Users/j.doe").text, "Code")
     }
+
+    func testWorkFolderGivesTheLastFolderName() {
+        let l = SessionLabel(projectDir: "-Users-test-Documents-Obsidian-Vault-H3-monorepo-main", home: home,
+                             cwd: "/Users/test/Documents/Obsidian Vault/H3/monorepo-main")
+        XCTAssertEqual(l.text, "monorepo-main")
+    }
+
+    func testWorktreeUsesTheRepoName() {
+        let l = SessionLabel(projectDir: "-x", home: home,
+                             cwd: "/Users/test/Code/app/.claude/worktrees/keen-ardinghelli-cfff41")
+        XCTAssertEqual(l.text, "app")
+    }
+
+    func testWorkFolderAtHomeIsHome() {
+        XCTAssertEqual(SessionLabel(projectDir: "-Users-test", home: home, cwd: "/Users/test").text, "Home")
+    }
+
+    func testOpenMausBotBackgroundRun() {
+        let l = SessionLabel(projectDir: "-private-var-folders-60-x-T-omb-claude-background-AADUVM", home: home,
+                             cwd: "/private/var/folders/60/x/T/omb-claude-background-AADUVM")
+        XCTAssertEqual(l.text, "OpenMausBot agent")
+    }
+
+    func testOpenBotNameWinsOverWorkFolder() {
+        let l = SessionLabel(projectDir: "-Users-test-OpenBot-Agents-agent-abc", home: home,
+                             openBotNames: ["agent-abc": "Crate Digger"], cwd: "/Users/test/OpenBot/Agents/agent-abc")
+        XCTAssertEqual(l.text, "OpenBot · Crate Digger")
+    }
 }

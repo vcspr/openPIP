@@ -90,6 +90,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var openImageItem: NSMenuItem!
     private var revealImageItem: NSMenuItem!
     private var showAllImagesItem: NSMenuItem!
+    private var switchItem: NSMenuItem!
     private let scanner = AgentScanner()
     private var activeAgents: [AgentSession] = []
     private var lastAgentScan = Date.distantPast
@@ -428,7 +429,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func redraw(_ id: UInt32) {
         guard let t = sessions[id],
-              let image = SessionCardRenderer.render(t.state, label: t.label, now: Date()) else { return }
+              let image = SessionCardRenderer.render(t.state, label: t.label, now: Date(),
+                                                     hasImages: imageCards[t.imageID] != nil) else { return }
         t.image = image
         panel.setImage(image, for: id)
     }
@@ -469,8 +471,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let list = displayImages(t)
         guard !list.isEmpty else { return }
         let id = t.imageID
+        let isFirst = imageCards[id] == nil
         let card = imageCards[id] ?? ImageCard(sessionID: sessionID)
         imageCards[id] = card
+        if isFirst { redraw(sessionID) } // the session card gets its Actions | Images switch
         let isNew = list.last?.path != card.list.last?.path
         card.list = list
         let fresh = list.last?.time.map { Date().timeIntervalSince($0) < 60 } ?? false
@@ -517,8 +521,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func frontClicked(_ id: UInt32, at point: CGPoint) {
+        // The "Actions | Images" switch on a session card or its image card.
+        if let t = sessions[id], imageCards[t.imageID] != nil {
+            let p = CGPoint(x: point.x * SessionCardRenderer.size.width, y: point.y * SessionCardRenderer.size.height)
+            if CardSwitch.side(at: p, cardWidth: SessionCardRenderer.size.width) == .images { switchCards() }
+            return
+        }
         guard let card = imageCards[id] else { return }
         let size = card.size
+        let local = CGPoint(x: point.x * size.width, y: point.y * size.height)
+        if let side = CardSwitch.side(at: local, cardWidth: size.width) {
+            if side == .actions { switchCards() }
+            return
+        }
         let paths = card.list.map(\.path)
         guard let current = card.browser.current(in: paths, now: Date()) else { return }
         switch ImageCardRenderer.hit(CGPoint(x: point.x * size.width, y: point.y * size.height),
@@ -544,6 +559,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         card.browser.step(-steps, in: card.list.map(\.path), at: Date())
         autoHide.pinned = true
         redrawImage(id)
+    }
+
+    /// The session card and image card of the same agent, when the front card is one of them.
+    private var frontPair: (session: UInt32, image: UInt32)? {
+        guard let id = stack.front else { return nil }
+        if let t = sessions[id], imageCards[t.imageID] != nil { return (id, t.imageID) }
+        if let c = imageCards[id], sessions[c.sessionID] != nil { return (c.sessionID, id) }
+        return nil
+    }
+
+    /// Flips the front card between an agent's actions (session card) and its images.
+    @objc private func switchCards() {
+        guard let pair = frontPair else { return }
+        autoHide.pinned = true
+        if stack.front == pair.session {
+            forget(stack.push(pair.image))
+            redrawImage(pair.image)
+            render()
+            tick()
+        } else {
+            showSession(pair.session)
+        }
     }
 
     /// The image shown on the front card, if the front card is an image card.
@@ -699,6 +736,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         mainMenu.addItem(statusLine)
         openImageItem = item("Open Image in Preview", #selector(openFrontImage))
         revealImageItem = item("Show Image in Finder", #selector(revealFrontImage))
+        switchItem = item("Show Images", #selector(switchCards))
         mainMenu.addItem(.separator())
 
         let mirrorItem = NSMenuItem(title: "Mirror Window", action: nil, keyEquivalent: "")
@@ -782,6 +820,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let hasImage = frontImagePath != nil
             openImageItem.isHidden = !hasImage
             revealImageItem.isHidden = !hasImage
+            switchItem.isHidden = frontPair == nil
+            switchItem.title = frontPair.map { stack.front == $0.session ? "Show Images" : "Show Agent Actions" } ?? "Show Images"
             for i in stackSizeMenu.items { i.state = i.tag == stack.limit ? .on : .off }
         }
     }

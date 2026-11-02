@@ -78,3 +78,23 @@ public enum ImageCardShape {
         return CGSize(width: width, height: height)
     }
 }
+
+/// The small "Actions | Images" switch in the top-right corner of a session card and its image
+/// card. Card points, top-left origin.
+public enum CardSwitch {
+    public enum Side: Equatable, Sendable { case actions, images }
+
+    public static let size = CGSize(width: 136, height: 24)
+    public static let margin: CGFloat = 10
+
+    public static func frame(cardWidth: CGFloat) -> CGRect {
+        CGRect(x: cardWidth - margin - size.width, y: margin, width: size.width, height: size.height)
+    }
+
+    /// The side under `p`, or nil when `p` is not on the switch.
+    public static func side(at p: CGPoint, cardWidth: CGFloat) -> Side? {
+        let f = frame(cardWidth: cardWidth)
+        guard f.contains(p) else { return nil }
+        return p.x < f.midX ? .actions : .images
+    }
+}
