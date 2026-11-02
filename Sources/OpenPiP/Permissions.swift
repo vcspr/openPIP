@@ -16,6 +16,17 @@ enum Permissions {
         task.waitUntilExit()
     }
 
+    /// Starts a fresh copy of OpenPiP and quits this one. macOS tells an app about a new Screen
+    /// Recording permission only when it starts.
+    static func relaunch() {
+        let path = Bundle.main.bundlePath
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/sh")
+        task.arguments = ["-c", "sleep 1; /usr/bin/open \"$0\"", path]
+        try? task.run()
+        NSApp.terminate(nil)
+    }
+
     static func openScreenRecordingSettings() {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
             NSWorkspace.shared.open(url)
@@ -23,7 +34,7 @@ enum Permissions {
     }
 }
 
-/// First-run window: two lines, one button, a live tick.
+/// Screen Recording window: opens by itself on first launch only, and from the menu any time.
 @MainActor
 final class WelcomeWindowController: NSWindowController {
     private let status = NSTextField(labelWithString: "")
@@ -31,7 +42,7 @@ final class WelcomeWindowController: NSWindowController {
     var onGranted: (() -> Void)?
 
     init() {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 460, height: 230),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 460, height: 300),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "OpenPiP"
         window.isReleasedWhenClosed = false
@@ -46,13 +57,24 @@ final class WelcomeWindowController: NSWindowController {
         button.keyEquivalent = "\r"
         status.font = .systemFont(ofSize: 12, weight: .medium)
         let hint = NSTextField(wrappingLabelWithString:
-            "Already on in System Settings but macOS keeps asking? The switch belongs to an older copy of OpenPiP. Click Fix Permission, then allow it once more.")
+            "Switch already on? macOS tells OpenPiP only after a restart: click Restart OpenPiP. "
+            + "Still not working? The switch belongs to an older copy of OpenPiP: click Fix Permission, "
+            + "allow it once more, then restart.")
         hint.font = .systemFont(ofSize: 11)
         hint.textColor = .secondaryLabelColor
+        let restart = NSButton(title: "Restart OpenPiP", target: self, action: #selector(restart))
+        restart.bezelStyle = .rounded
         let fix = NSButton(title: "Fix Permission", target: self, action: #selector(fixPermission))
         fix.bezelStyle = .rounded
+        let buttons = NSStackView(views: [restart, fix])
+        buttons.spacing = 8
+        let note = NSTextField(wrappingLabelWithString:
+            "This window opens by itself only once. Find it again in the OpenPiP menu → Screen Recording…. "
+            + "Session and image cards work without Screen Recording.")
+        note.font = .systemFont(ofSize: 11)
+        note.textColor = .tertiaryLabelColor
 
-        let stack = NSStackView(views: [line1, line2, button, status, hint, fix])
+        let stack = NSStackView(views: [line1, line2, button, status, hint, buttons, note])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
@@ -80,6 +102,10 @@ final class WelcomeWindowController: NSWindowController {
         }
     }
 
+    @objc private func restart() {
+        Permissions.relaunch()
+    }
+
     @objc private func fixPermission() {
         Permissions.resetScreenRecording()
         _ = CGRequestScreenCaptureAccess()
@@ -93,7 +119,7 @@ final class WelcomeWindowController: NSWindowController {
             timer?.invalidate()
             onGranted?()
         } else {
-            status.stringValue = "⚪️ Not granted yet. If you just turned it on, quit and reopen OpenPiP."
+            status.stringValue = "⚪️ Not seen yet. If you just turned it on, click Restart OpenPiP."
             status.textColor = .secondaryLabelColor
         }
     }

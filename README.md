@@ -33,23 +33,34 @@ open /Applications/OpenPiP.app
 This also puts `openpip-post` and `openpip-hook` on your PATH. Or download the zip from
 [Releases](https://github.com/vcspr/openPIP/releases).
 
-The app is ad-hoc signed, not notarized. If macOS blocks the first launch, open System Settings →
-Privacy & Security and click **Open Anyway**. Then allow **Screen Recording** when OpenPiP asks.
+The app is signed with the project's own certificate, not an Apple Developer ID, and not notarized. If
+macOS blocks the first launch, open System Settings → Privacy & Security and click **Open Anyway**. Then
+allow **Screen Recording** when OpenPiP asks. From 0.2.1 on, updates keep that permission (every release
+is signed with the same certificate). Coming from 0.2.0 or older, allow it once more after updating.
 
 ## Build from source
 
 ```bash
 git clone https://github.com/vcspr/openPIP.git && cd openPIP
-scripts/build-app.sh --install     # builds, ad-hoc signs, copies to ~/Applications, installs ~/.openpip/bin tools
+scripts/build-app.sh --install     # builds, signs, copies to ~/Applications, installs ~/.openpip/bin tools
 open ~/Applications/OpenPiP.app
 swift test                         # unit tests (event parsing, auto-hide, matching, frame dedupe, layout)
 ```
 
-First run shows a window asking for **Screen Recording**. Ad-hoc signing gives every build a new identity,
-so after a rebuild macOS may ask again. Always run the copy in `~/Applications`.
+First run shows a window asking for **Screen Recording** (only once; later it is in the menu). Without a
+signing certificate, builds are ad-hoc signed: each build is a new app to macOS, and Screen Recording must be
+allowed again after every rebuild. To avoid that, make a certificate once:
 
-**Switch is on but macOS keeps asking?** The switch belongs to an older build of OpenPiP. Open the menu →
-**Screen Recording…** → **Fix Permission**, allow it once more, then quit and reopen OpenPiP. (It runs
+```bash
+scripts/make-signing-cert.sh       # "OpenPiP Self-Signed" in your login keychain; build-app.sh uses it
+```
+
+Keep one installed copy only (Homebrew's in `/Applications`, or yours in `~/Applications`). Two copies with
+one bundle id can tie the Screen Recording switch to the wrong one.
+
+**Switch is on but OpenPiP does not see it?** Open the menu → **Screen Recording…** → **Restart OpenPiP**
+(macOS tells an app about a new permission only when it starts). Still not? The switch belongs to an older
+build: click **Fix Permission**, allow it once more, then restart. (It runs
 `tccutil reset ScreenCapture app.hemii.openpip`, which only clears OpenPiP's own entry.)
 
 ## Use

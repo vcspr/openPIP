@@ -146,7 +146,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             MainActor.assumeIsolated { self?.toggleClickThrough() }
         }
 
-        if !Permissions.hasScreenRecording { showWelcome() }
+        if WelcomePolicy.showAtLaunch(granted: Permissions.hasScreenRecording, shownBefore: Settings.welcomeShown) {
+            Settings.welcomeShown = true
+            showWelcome()
+        }
 
         tickTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }

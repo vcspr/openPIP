@@ -45,6 +45,12 @@ enum Settings {
         set { d.set(newValue, forKey: "showAllNewImages") }
     }
 
+    /// The Screen Recording window opened on its own once already.
+    static var welcomeShown: Bool {
+        get { d.bool(forKey: "welcomeShown") }
+        set { d.set(newValue, forKey: "welcomeShown") }
+    }
+
     /// How many windows the stack keeps (front one live, the rest frozen and blurred).
     static var maxCards: Int {
         get { d.object(forKey: "maxCards") as? Int ?? 3 }

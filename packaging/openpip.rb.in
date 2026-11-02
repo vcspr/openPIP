@@ -22,9 +22,10 @@ cask "openpip" do
   ]
 
   caveats <<~EOS
-    OpenPiP is ad-hoc signed, not notarized. If macOS blocks the first launch, open
-    System Settings > Privacy & Security and click "Open Anyway".
+    OpenPiP is signed with its own certificate, not notarized. If macOS blocks the first
+    launch, open System Settings > Privacy & Security and click "Open Anyway".
 
     OpenPiP needs Screen Recording permission. Grant it when it asks on first launch.
+    Updating from 0.2.0 or older: allow it once more. Later updates keep it.
   EOS
 end

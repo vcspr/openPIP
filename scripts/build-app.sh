@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build OpenPiP.app with SwiftPM and ad-hoc sign it. No Xcode project, no Developer ID.
+# Build OpenPiP.app with SwiftPM and sign it. No Xcode project, no Developer ID.
 #
 #   scripts/build-app.sh            -> build.noindex/OpenPiP.app
 #                                      (Spotlight skips .noindex folders, so macOS never lists this
@@ -7,8 +7,10 @@
 #   scripts/build-app.sh --install  -> also copy to ~/Applications/OpenPiP.app
 #                                      and install openpip-post / openpip-hook to ~/.openpip/bin
 #
-# Ad-hoc signing gives each build a new code identity, so macOS may ask for Screen Recording again
-# after a rebuild. Always run the copy in ~/Applications so there is one stable path to re-grant.
+# Signing: with the "OpenPiP Self-Signed" certificate in the login keychain (make it once with
+# scripts/make-signing-cert.sh, or name another with OPENPIP_SIGN_IDENTITY), every build has the same
+# identity and keeps its Screen Recording permission. Without it the app is ad-hoc signed: each build
+# is a new app to macOS and Screen Recording must be allowed again.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -20,7 +22,13 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/OpenPiP"
 cp Support/Info.plist "$APP/Contents/Info.plist"
-codesign --force --sign - --identifier app.hemii.openpip "$APP"
+IDENTITY="${OPENPIP_SIGN_IDENTITY:-OpenPiP Self-Signed}"
+if security find-identity -p codesigning 2>/dev/null | grep -qF "\"$IDENTITY\""; then
+    codesign --force --sign "$IDENTITY" --identifier app.hemii.openpip "$APP"
+else
+    echo "No \"$IDENTITY\" certificate: signing ad-hoc (run scripts/make-signing-cert.sh to keep permissions across builds)"
+    codesign --force --sign - --identifier app.hemii.openpip "$APP"
+fi
 codesign --verify --strict "$APP"
 # Keep this build copy off macOS's app list. Two registered copies with one bundle id can tie the
 # Screen Recording switch to the wrong copy, and then macOS keeps asking.
