@@ -34,9 +34,9 @@ final class SessionLabelTests: XCTestCase {
     }
 
     func testWorkFolderGivesTheLastFolderName() {
-        let l = SessionLabel(projectDir: "-Users-test-Documents-Obsidian-Vault-H3-monorepo-main", home: home,
-                             cwd: "/Users/test/Documents/Obsidian Vault/H3/monorepo-main")
-        XCTAssertEqual(l.text, "monorepo-main")
+        let l = SessionLabel(projectDir: "-Users-test-Documents-Notes-Work-shop-app", home: home,
+                             cwd: "/Users/test/Documents/Notes/Work/shop-app")
+        XCTAssertEqual(l.text, "shop-app")
     }
 
     func testWorktreeUsesTheRepoName() {
